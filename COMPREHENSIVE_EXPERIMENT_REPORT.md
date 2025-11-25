@@ -1271,9 +1271,7 @@ python3 -m experiments.main_experiment \
 @techreport{lfactory2025,
   title={Comprehensive Evaluation of Time Series Anomaly Detection Algorithms:
          A Multi-Dataset, Multi-Seed Study},
-  author={LFactory Team},
   year={2025},
-  institution={Industrial AI Laboratory},
   note={480 experiments across synthetic, SKAB, SMD, and AIHub71802 datasets}
 }
 ```

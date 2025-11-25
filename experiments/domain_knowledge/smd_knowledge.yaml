@@ -1,0 +1,248 @@
+# SMD Dataset Domain Knowledge
+# Server Machine Dataset - IT Infrastructure Monitoring
+
+dataset:
+  name: "SMD"
+  full_name: "Server Machine Dataset"
+  domain: "IT Infrastructure / Data Center"
+  description: |
+    SMD contains metrics from server machines in an internet company.
+    28 machines with 38 dimensions (sensors) each.
+    Metrics cover CPU, memory, network, and disk performance.
+
+metric_categories:
+  cpu:
+    description: "CPU utilization and performance metrics"
+    metrics:
+      - name: "cpu_utilization"
+        normal_range: [10, 70]
+        unit: "percent"
+        anomaly_indicators:
+          high: "Resource-intensive process, potential attack, runaway process"
+          low: "Idle system (normal) or monitoring failure"
+          sustained_high: "Memory leak causing swapping, infinite loop"
+
+      - name: "cpu_iowait"
+        normal_range: [0, 10]
+        unit: "percent"
+        anomaly_indicators:
+          high: "Disk I/O bottleneck, slow storage"
+          patterns:
+            - "Spikes during backup windows (expected)"
+            - "Sustained high = storage issue"
+
+  memory:
+    description: "Memory usage and management metrics"
+    metrics:
+      - name: "memory_used"
+        normal_range: [40, 80]
+        unit: "percent"
+        anomaly_indicators:
+          high: "Memory leak, insufficient RAM, cache growth"
+          rapid_increase: "Memory leak in application"
+          gradual_increase: "Normal cache growth or slow leak"
+
+      - name: "memory_cached"
+        description: "File system cache"
+        anomaly_indicators:
+          high: "Normal for file servers"
+          low: "Memory pressure, insufficient RAM"
+
+      - name: "swap_usage"
+        normal_range: [0, 10]
+        unit: "percent"
+        anomaly_indicators:
+          high: "Critical - severe memory pressure"
+          any_usage: "Warning sign, investigate memory"
+
+  network:
+    description: "Network traffic and connectivity metrics"
+    metrics:
+      - name: "network_bytes_in"
+        unit: "bytes/sec"
+        anomaly_indicators:
+          high: "DDoS attack, legitimate traffic spike, backup transfer"
+          sudden_spike: "Possible attack or bulk data transfer"
+          sustained_high: "Check for unauthorized data exfiltration"
+
+      - name: "network_bytes_out"
+        unit: "bytes/sec"
+        anomaly_indicators:
+          high: "Data exfiltration concern, backup transfer"
+          asymmetric: "Compare with bytes_in for attack patterns"
+
+      - name: "network_connections"
+        normal_range: [100, 1000]
+        anomaly_indicators:
+          high: "Connection flood, SYN attack, legitimate scaling"
+          sudden_increase: "Possible DDoS or service discovery"
+
+  disk:
+    description: "Disk I/O and storage metrics"
+    metrics:
+      - name: "disk_read_bytes"
+        unit: "bytes/sec"
+        anomaly_indicators:
+          high: "Database query, file scan, backup"
+          sustained_high: "Check for runaway process"
+
+      - name: "disk_write_bytes"
+        unit: "bytes/sec"
+        anomaly_indicators:
+          high: "Logging storm, database write, backup"
+          sudden_spike: "Check log files for errors"
+
+      - name: "disk_utilization"
+        normal_range: [0, 80]
+        unit: "percent"
+        anomaly_indicators:
+          high: "Storage full risk, cleanup needed"
+          rapid_increase: "Runaway logging, data growth"
+
+common_anomaly_patterns:
+  resource_exhaustion:
+    description: "Gradual depletion of system resources"
+    sensors: ["memory_used", "swap_usage", "disk_utilization"]
+    pattern: "Steady increase over time"
+    causes:
+      - "Memory leak in application"
+      - "Log files not rotated"
+      - "Cache growth without cleanup"
+    severity: "Medium to High"
+    actions:
+      - "Identify resource-consuming process"
+      - "Check for memory leaks"
+      - "Review log rotation policies"
+
+  traffic_spike:
+    description: "Sudden increase in network activity"
+    sensors: ["network_bytes_in", "network_bytes_out", "network_connections"]
+    pattern: "Sharp increase, sustained or repeated"
+    causes:
+      - "Legitimate traffic surge"
+      - "DDoS attack"
+      - "Backup or sync operation"
+    severity: "Medium (if legitimate) to Critical (if attack)"
+    actions:
+      - "Verify traffic source"
+      - "Check for attack signatures"
+      - "Scale resources if legitimate"
+
+  cpu_spike:
+    description: "High CPU utilization"
+    sensors: ["cpu_utilization", "cpu_iowait"]
+    pattern: "Sudden spike or sustained high"
+    causes:
+      - "Compute-intensive job"
+      - "Runaway process"
+      - "Cryptomining malware"
+    severity: "Medium"
+    actions:
+      - "Identify high-CPU process"
+      - "Check if expected workload"
+      - "Investigate if unexpected"
+
+  io_bottleneck:
+    description: "Storage I/O slowdown"
+    sensors: ["cpu_iowait", "disk_read_bytes", "disk_write_bytes"]
+    pattern: "High iowait with disk activity"
+    causes:
+      - "Slow storage"
+      - "Database query issues"
+      - "Disk failing"
+    severity: "Medium to High"
+    actions:
+      - "Check disk health (SMART)"
+      - "Review database queries"
+      - "Consider SSD upgrade"
+
+correlation_rules:
+  - sensors: ["cpu_utilization", "memory_used"]
+    relationship: "Often correlated during high load"
+    deviation_meaning: "High CPU + Low memory = compute-bound task"
+
+  - sensors: ["memory_used", "swap_usage"]
+    relationship: "Swap increases when memory full"
+    deviation_meaning: "Any swap usage with high memory = memory pressure"
+
+  - sensors: ["network_bytes_in", "cpu_utilization"]
+    relationship: "CPU may increase to process network traffic"
+    deviation_meaning: "High network + Low CPU = possible buffer/queue issue"
+
+  - sensors: ["disk_write_bytes", "disk_utilization"]
+    relationship: "Writes increase utilization over time"
+    deviation_meaning: "High writes + Critical utilization = storage full imminent"
+
+severity_levels:
+  critical:
+    description: "Service impact imminent or occurring"
+    indicators:
+      - "swap_usage > 50%"
+      - "disk_utilization > 95%"
+      - "cpu_utilization > 95% sustained"
+      - "Multiple anomalies simultaneously"
+    actions:
+      - "Alert on-call engineer"
+      - "Consider automatic remediation"
+      - "Prepare for service degradation"
+
+  high:
+    description: "Significant resource pressure"
+    indicators:
+      - "memory_used > 90%"
+      - "disk_utilization > 85%"
+      - "Anomaly score 0.7-0.9"
+    actions:
+      - "Investigate within 1 hour"
+      - "Identify root cause"
+      - "Plan capacity increase"
+
+  medium:
+    description: "Trending toward issues"
+    indicators:
+      - "Gradual resource increase"
+      - "Anomaly score 0.5-0.7"
+      - "Occasional spikes"
+    actions:
+      - "Add to daily review"
+      - "Track trend"
+      - "Plan proactive maintenance"
+
+  low:
+    description: "Minor deviation"
+    indicators:
+      - "Single sensor deviation"
+      - "Anomaly score < 0.5"
+      - "Within normal variation"
+    actions:
+      - "Log for analysis"
+      - "No immediate action"
+
+troubleshooting_guide:
+  high_cpu:
+    steps:
+      - "Run 'top' or 'htop' to identify process"
+      - "Check if known scheduled job"
+      - "Review application logs"
+      - "Consider process restart if runaway"
+
+  high_memory:
+    steps:
+      - "Check per-process memory with 'ps aux'"
+      - "Look for memory leaks (growing RSS)"
+      - "Review application for caching issues"
+      - "Consider increasing RAM or fixing leak"
+
+  high_disk_io:
+    steps:
+      - "Use 'iotop' to identify I/O process"
+      - "Check database query performance"
+      - "Review application logging levels"
+      - "Consider faster storage"
+
+  network_anomaly:
+    steps:
+      - "Use 'netstat' or 'ss' for connections"
+      - "Check firewall logs"
+      - "Review application access logs"
+      - "Consider traffic analysis"

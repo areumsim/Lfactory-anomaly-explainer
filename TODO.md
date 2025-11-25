@@ -2,7 +2,6 @@
 
 **Version**: 2.0 (Complete Revision - Research-Driven)
 **Last Updated**: 2025-10-01
-**Owner**: Research Planning Lead
 
 ---
 

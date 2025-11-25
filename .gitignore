@@ -24,3 +24,4 @@ temp/
 
 # Claude config (contains API keys)
 .claude/
+.env

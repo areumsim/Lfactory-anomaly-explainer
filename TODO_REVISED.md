@@ -1,9 +1,9 @@
 # LFactory 연구 계획 (수정판)
 ## LLM-Guided Manufacturing Anomaly Detection & Interpretation
 
-**작성일**: 2025-11-25
-**상태**: Phase 1 완료 → Phase 2-3 진행 중
-**핵심 목표**: 제조 공정 데이터에서 ML 이상 탐지 + LLM 해석 + LLM 기반 최적화
+**작성일**: 2025-11-25  
+**상태**: Phase 1 완료 → Phase 2-3 진행 중  
+**핵심 목표**: 제조 공정 데이터에서 ML 이상 탐지 + LLM 해석 + LLM 기반 최적화  
 
 ---
 
@@ -713,5 +713,3 @@ def run_optimization_experiment(dataset, detector):
 
 **연구 핵심 재확인**:
 > 제조 공정 데이터에서 ML로 이상 탐지 + LLM이 (1) 이상치, (2) 모델, (3) 도메인 해석 + LLM이 도메인 지식으로 ML 최적화
-
-**이제 올바른 방향입니다!** ✅

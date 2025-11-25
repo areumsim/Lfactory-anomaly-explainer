@@ -39,33 +39,29 @@
 ## 📚 문서 맵 (Documentation Map)
 
 ### 시작하기
-- **[docs/HANDBOOK.md](docs/HANDBOOK.md)** — 온보딩 & 연구 핸드북 (영문, 종합 가이드) **← 여기서 시작하세요!**
-- **[docs/HANDBOOK_ko.md](docs/HANDBOOK_ko.md)** — 온보딩 & 연구 핸드북 (한국어)
+- **[docs/HANDBOOK_ko.md](docs/HANDBOOK_ko.md)** — 온보딩 & 연구 핸드북 **← 여기서 시작하세요!**
 
 ### 연구 문서
 - **[TODO.md](TODO.md)** — 연구 개선 계획 (Research Improvement Plan) - 7주 로드맵
-- **[docs/LOCAL_DEFINITION.md](docs/LOCAL_DEFINITION.md)** — "Local" 이상탐지의 3가지 차원 정의
-- **[docs/RQ_DEPENDENCIES.md](docs/RQ_DEPENDENCIES.md)** — 4개 연구 질문(RQ) 상호의존성 분석
-- **[docs/RQ_JUSTIFICATION.md](docs/RQ_JUSTIFICATION.md)** — 연구 질문 정당화 및 실증 증거
-- **[docs/RELATED_WORK.md](docs/RELATED_WORK.md)** — 관련 연구 문헌 조사 (~29편)
+- **[TODO_REVISED.md](TODO_REVISED.md)** — Phase 2-3 LLM 통합 계획
+- **[docs/LOCAL_DEFINITION_ko.md](docs/LOCAL_DEFINITION_ko.md)** — "Local" 이상탐지의 3가지 차원 정의
+- **[docs/RQ_DEPENDENCIES_ko.md](docs/RQ_DEPENDENCIES_ko.md)** — 4개 연구 질문(RQ) 상호의존성 분석
+- **[docs/RQ_JUSTIFICATION_ko.md](docs/RQ_JUSTIFICATION_ko.md)** — 연구 질문 정당화 및 실증 증거
+- **[docs/RELATED_WORK_ko.md](docs/RELATED_WORK_ko.md)** — 관련 연구 문헌 조사 (~29편)
 
 ### 평가 및 실험
 - **[EVALUATION_PROTOCOL.md](EVALUATION_PROTOCOL.md)** — 평가 프로토콜 (지표, 보정, 비용 민감 임계값, 시계열 특화 지표)
-- **[EXPERIMENT_REPORT.md](EXPERIMENT_REPORT.md)** — 실험 보고서 (현재 결과 요약)
+- **[COMPREHENSIVE_EXPERIMENT_REPORT.md](COMPREHENSIVE_EXPERIMENT_REPORT.md)** — 종합 실험 보고서 (480 runs)
 
 ### Phase 2 (LLM 설명)
 - **[experiments/llm_config.yaml](experiments/llm_config.yaml)** — LLM 제공자 설정 (OpenAI + 로컬 EXAONE)
 - **[experiments/explain_rag.py](experiments/explain_rag.py)** — RAG-Bayes 설명 모듈
 - **[scripts/test_explain.py](scripts/test_explain.py)** — RAG 설명기 테스트 스크립트
 
-### 기타
-- **[UPDATE_LOG.md](UPDATE_LOG.md)** — 상세 변경 로그 (Loop 1-17++)
-
 ---
 
-처음 시작하시는 분은 다음 핸드북을 먼저 읽어주세요:
-- **[docs/HANDBOOK.md](docs/HANDBOOK.md)** — Onboarding & Research Handbook (영문, 종합 가이드)
-- **[docs/HANDBOOK_ko.md](docs/HANDBOOK_ko.md)** — 온보딩 & 연구 핸드북 (한국어)
+처음 시작하시는 분은 핸드북을 먼저 읽어주세요:
+- **[docs/HANDBOOK_ko.md](docs/HANDBOOK_ko.md)** — 온보딩 & 연구 핸드북
 
 ## 현재 상태 (Loop 1++)
 - 합성 시계열 생성기: spike/step/drift 이상 라벨 포함

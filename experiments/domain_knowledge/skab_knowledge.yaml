@@ -1,0 +1,247 @@
+# SKAB Dataset Domain Knowledge
+# Skoltech Anomaly Benchmark - Valve Monitoring System
+
+dataset:
+  name: "SKAB"
+  full_name: "Skoltech Anomaly Benchmark"
+  domain: "Industrial Water Circulation System"
+  description: |
+    SKAB monitors a testbed water circulation system with various sensors.
+    The system includes pumps, valves, and pipes for water circulation.
+    Anomalies include valve malfunctions, leaks, and mechanical failures.
+
+scenarios:
+  valve1:
+    description: "Primary valve monitoring"
+    anomaly_types:
+      - "Valve sticking or jamming"
+      - "Partial valve closure"
+      - "Valve seat wear"
+    typical_causes:
+      - "Mechanical wear"
+      - "Foreign material in flow"
+      - "Corrosion buildup"
+
+  valve2:
+    description: "Secondary valve monitoring"
+    anomaly_types:
+      - "Valve oscillation"
+      - "Delayed response"
+      - "Incomplete opening/closing"
+    typical_causes:
+      - "Actuator issues"
+      - "Control system lag"
+      - "Pressure fluctuations"
+
+  other:
+    description: "Additional system anomalies"
+    anomaly_types:
+      - "Pump cavitation"
+      - "Pipe leakage"
+      - "System-wide pressure drops"
+
+sensors:
+  Accelerometer1RMS:
+    type: "vibration"
+    unit: "g (RMS)"
+    normal_range: [0.02, 0.03]
+    description: "Primary accelerometer measuring valve body vibration"
+    anomaly_indicators:
+      high: "Mechanical looseness, bearing wear, valve chatter"
+      low: "Sensor malfunction, damping issues"
+      sudden_change: "Impact event, valve slam"
+    failure_modes:
+      - pattern: "Sustained high vibration"
+        cause: "Bearing degradation or mechanical looseness"
+        severity: "Medium"
+        action: "Schedule inspection within 1 week"
+      - pattern: "Periodic spikes"
+        cause: "Valve chatter or flow instability"
+        severity: "Low-Medium"
+        action: "Monitor trend, check flow conditions"
+      - pattern: "Sudden step change"
+        cause: "Component failure or external impact"
+        severity: "High"
+        action: "Immediate inspection required"
+
+  Accelerometer2RMS:
+    type: "vibration"
+    unit: "g (RMS)"
+    normal_range: [0.03, 0.05]
+    description: "Secondary accelerometer for cross-validation"
+    anomaly_indicators:
+      high: "Similar to Accelerometer1RMS, confirms vibration issues"
+      divergence: "If differs from Accelerometer1RMS, indicates localized problem"
+
+  Current:
+    type: "electrical"
+    unit: "Amperes"
+    normal_range: [1.2, 1.5]
+    description: "Motor/actuator current draw"
+    anomaly_indicators:
+      high: "Mechanical binding, increased load, valve obstruction"
+      low: "Motor issue, loss of load, disconnection"
+      fluctuating: "Unstable operation, hunting"
+    failure_modes:
+      - pattern: "Gradual increase over time"
+        cause: "Progressive mechanical wear or buildup"
+        severity: "Medium"
+        action: "Plan maintenance within 2 weeks"
+      - pattern: "Sudden spike"
+        cause: "Sudden obstruction or jam"
+        severity: "High"
+        action: "Immediate investigation"
+
+  Pressure:
+    type: "hydraulic"
+    unit: "bar"
+    normal_range: [0.0, 0.5]
+    description: "System pressure at valve location"
+    anomaly_indicators:
+      high: "Downstream blockage, valve closure issue"
+      low: "Leak, pump failure, valve stuck open"
+      oscillating: "Water hammer, unstable control"
+    failure_modes:
+      - pattern: "Pressure drop with flow rate maintained"
+        cause: "Leak in system"
+        severity: "High"
+        action: "Check for leaks immediately"
+      - pattern: "Pressure spikes"
+        cause: "Water hammer from rapid valve closure"
+        severity: "Medium-High"
+        action: "Adjust valve closure speed"
+
+  Temperature:
+    type: "thermal"
+    unit: "Celsius"
+    normal_range: [75, 85]
+    description: "Water temperature in circulation system"
+    anomaly_indicators:
+      high: "Cooling system failure, increased friction"
+      low: "Heat source issue, flow reduction"
+      rapid_change: "Control system malfunction"
+    failure_modes:
+      - pattern: "Steady temperature rise"
+        cause: "Cooling inefficiency or friction increase"
+        severity: "Medium"
+        action: "Check cooling system and bearings"
+
+  Thermocouple:
+    type: "thermal"
+    unit: "Celsius"
+    normal_range: [24, 28]
+    description: "Ambient/component temperature"
+    anomaly_indicators:
+      high: "Environmental issue or localized heating"
+      correlation: "Should track with Temperature sensor"
+
+  Voltage:
+    type: "electrical"
+    unit: "Volts"
+    normal_range: [230, 240]
+    description: "Supply voltage to system"
+    anomaly_indicators:
+      high: "Power surge, regulator issue"
+      low: "Brown-out, supply problem"
+      unstable: "Power quality issues affecting system"
+    failure_modes:
+      - pattern: "Voltage sag during operation"
+        cause: "Insufficient power supply capacity"
+        severity: "Low"
+        action: "Monitor, consider power supply upgrade"
+
+  "Volume Flow RateRMS":
+    type: "flow"
+    unit: "L/min (RMS)"
+    normal_range: [30, 35]
+    description: "Water flow rate through system"
+    anomaly_indicators:
+      high: "Valve fully open, pump overspeeding"
+      low: "Valve restriction, pump issue, blockage"
+      unstable: "Control instability, air in system"
+    failure_modes:
+      - pattern: "Flow reduction with pressure increase"
+        cause: "Partial valve closure or blockage"
+        severity: "Medium"
+        action: "Check valve position and filter"
+      - pattern: "Flow and pressure both dropping"
+        cause: "Major leak or pump failure"
+        severity: "High"
+        action: "Emergency inspection"
+
+correlation_rules:
+  - sensors: ["Accelerometer1RMS", "Accelerometer2RMS"]
+    relationship: "Should correlate"
+    deviation_meaning: "Localized vibration source if one is high"
+
+  - sensors: ["Pressure", "Volume Flow RateRMS"]
+    relationship: "Inverse for valve restriction"
+    deviation_meaning: "High pressure + Low flow = blockage/restriction"
+
+  - sensors: ["Current", "Pressure"]
+    relationship: "Both increase with load"
+    deviation_meaning: "High current + Normal pressure = mechanical friction"
+
+  - sensors: ["Temperature", "Current"]
+    relationship: "Temperature rises with sustained high current"
+    deviation_meaning: "Monitor for thermal overload"
+
+severity_levels:
+  critical:
+    description: "Immediate action required"
+    indicators:
+      - "Multiple sensors showing anomaly simultaneously"
+      - "Anomaly score > 0.9"
+      - "Rapid change in critical sensors (Pressure, Flow)"
+    actions:
+      - "Alert operator immediately"
+      - "Consider emergency shutdown if safety risk"
+      - "Dispatch maintenance team"
+
+  high:
+    description: "Prompt attention needed"
+    indicators:
+      - "Single critical sensor anomaly"
+      - "Anomaly score 0.7-0.9"
+      - "Sustained deviation from normal"
+    actions:
+      - "Schedule inspection within 24 hours"
+      - "Increase monitoring frequency"
+      - "Prepare replacement parts"
+
+  medium:
+    description: "Monitor and plan maintenance"
+    indicators:
+      - "Non-critical sensor anomaly"
+      - "Anomaly score 0.5-0.7"
+      - "Gradual drift from normal"
+    actions:
+      - "Add to maintenance schedule"
+      - "Track trend over next few days"
+      - "Document for analysis"
+
+  low:
+    description: "Awareness only"
+    indicators:
+      - "Minor deviation"
+      - "Anomaly score < 0.5"
+      - "Single occurrence"
+    actions:
+      - "Log for records"
+      - "Continue normal monitoring"
+
+maintenance_recommendations:
+  vibration_anomaly:
+    short_term: "Check mounting bolts, listen for unusual sounds"
+    medium_term: "Schedule vibration analysis, inspect bearings"
+    long_term: "Plan bearing replacement, balance rotating parts"
+
+  pressure_anomaly:
+    short_term: "Check for visible leaks, verify valve positions"
+    medium_term: "Inspect seals and gaskets, test relief valves"
+    long_term: "Review system design, upgrade pressure regulation"
+
+  electrical_anomaly:
+    short_term: "Check connections, verify power supply"
+    medium_term: "Test motor windings, inspect contactors"
+    long_term: "Plan motor replacement, upgrade electrical system"

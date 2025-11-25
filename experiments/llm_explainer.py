@@ -1,10 +1,11 @@
 """
 LLM-based Anomaly Explanation System
 
-This module provides 3-in-1 explanation capabilities:
+This module provides 4-in-1 explanation capabilities:
 1. Anomaly Explanation - What is the anomaly and why is it anomalous?
 2. ML Model Explanation - Why did the ML model flag this point?
-3. Domain Knowledge - What does this mean in the manufacturing context?
+3. Domain Knowledge - What does this mean in the manufacturing context? (Phase 2.4)
+4. Feature Importance - Which sensors contributed most to the detection? (Phase 2.3)
 """
 import json
 import numpy as np
@@ -13,6 +14,12 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 from .llm_config import get_openai_client, DEFAULT_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS
+from .feature_importance import (
+    compute_reconstruction_importance,
+    compute_anomaly_point_attribution,
+    format_importance_for_llm
+)
+from .domain_knowledge import DomainKnowledgeRetriever
 
 
 class AnomalyExplainer:
@@ -24,12 +31,15 @@ class AnomalyExplainer:
         self,
         model: str = DEFAULT_MODEL,
         temperature: float = DEFAULT_TEMPERATURE,
-        max_tokens: int = DEFAULT_MAX_TOKENS
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        knowledge_dir: Optional[str] = None
     ):
         self.client = get_openai_client()
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        # Initialize domain knowledge retriever (Phase 2.4)
+        self.knowledge_retriever = DomainKnowledgeRetriever(knowledge_dir)
 
     def explain_anomaly(
         self,
@@ -37,7 +47,11 @@ class AnomalyExplainer:
         anomaly_idx: int,
         context_window: int = 20,
         include_model_interpretation: bool = True,
-        include_domain_knowledge: bool = True
+        include_domain_knowledge: bool = True,
+        include_feature_importance: bool = True,
+        multi_sensor_data: Optional[np.ndarray] = None,
+        reconstruction_errors: Optional[np.ndarray] = None,
+        sensor_names: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Generate comprehensive explanation for a detected anomaly
@@ -48,6 +62,10 @@ class AnomalyExplainer:
             context_window: Number of points before/after anomaly to include as context
             include_model_interpretation: Whether to include ML model interpretation
             include_domain_knowledge: Whether to include domain knowledge
+            include_feature_importance: Whether to include feature importance analysis
+            multi_sensor_data: Optional array of shape (n_samples, n_sensors) for feature importance
+            reconstruction_errors: Optional per-sensor reconstruction errors
+            sensor_names: Optional list of sensor names
 
         Returns:
             Dictionary containing the full explanation
@@ -59,16 +77,30 @@ class AnomalyExplainer:
         # Extract anomaly information
         anomaly_info = self._extract_anomaly_info(run_data, preds_df, anomaly_idx, context_window)
 
+        # Add feature importance if multi-sensor data is provided
+        feature_importance_info = None
+        if include_feature_importance and multi_sensor_data is not None:
+            feature_importance_info = self._compute_feature_importance(
+                anomaly_idx=anomaly_idx,
+                multi_sensor_data=multi_sensor_data,
+                reconstruction_errors=reconstruction_errors,
+                sensor_names=sensor_names,
+                context_window=context_window
+            )
+            anomaly_info["feature_importance"] = feature_importance_info
+
         # Generate LLM explanation
         explanation = self._generate_explanation(
             anomaly_info,
             include_model_interpretation=include_model_interpretation,
-            include_domain_knowledge=include_domain_knowledge
+            include_domain_knowledge=include_domain_knowledge,
+            include_feature_importance=include_feature_importance and feature_importance_info is not None
         )
 
         return {
             "anomaly_info": anomaly_info,
             "explanation": explanation,
+            "feature_importance": feature_importance_info,
             "metadata": {
                 "run_id": run_data["run"]["run_id"],
                 "dataset": run_data["meta"]["dataset"],
@@ -167,11 +199,102 @@ class AnomalyExplainer:
             return 0.0
         return (value - mean) / std
 
+    def _compute_feature_importance(
+        self,
+        anomaly_idx: int,
+        multi_sensor_data: np.ndarray,
+        reconstruction_errors: Optional[np.ndarray],
+        sensor_names: Optional[List[str]],
+        context_window: int
+    ) -> Dict[str, Any]:
+        """
+        Compute feature importance for a specific anomaly point.
+
+        Uses reconstruction error-based attribution if errors are provided,
+        otherwise falls back to value-based analysis.
+        """
+        if reconstruction_errors is not None:
+            # Use reconstruction error-based attribution
+            attribution = compute_anomaly_point_attribution(
+                anomaly_idx=anomaly_idx,
+                multi_sensor_data=multi_sensor_data,
+                reconstruction_errors=reconstruction_errors,
+                sensor_names=sensor_names,
+                context_window=context_window
+            )
+
+            # Also compute global importance
+            global_importance = compute_reconstruction_importance(
+                multi_sensor_data=multi_sensor_data,
+                reconstruction_errors=reconstruction_errors,
+                sensor_names=sensor_names
+            )
+
+            return {
+                "point_attribution": attribution,
+                "global_importance": global_importance,
+                "formatted_summary": format_importance_for_llm(attribution)
+            }
+        else:
+            # Fallback: use value deviation analysis
+            n_sensors = multi_sensor_data.shape[1] if len(multi_sensor_data.shape) > 1 else 1
+            if sensor_names is None:
+                sensor_names = [f"sensor_{i}" for i in range(n_sensors)]
+
+            # Calculate value deviations from context window
+            start_idx = max(0, anomaly_idx - context_window)
+            end_idx = min(len(multi_sensor_data), anomaly_idx + context_window + 1)
+
+            if len(multi_sensor_data.shape) == 1:
+                anomaly_values = {sensor_names[0]: float(multi_sensor_data[anomaly_idx])}
+                baseline_mean = {sensor_names[0]: float(np.mean(multi_sensor_data[start_idx:end_idx]))}
+                baseline_std = {sensor_names[0]: float(np.std(multi_sensor_data[start_idx:end_idx]))}
+            else:
+                anomaly_values = {name: float(multi_sensor_data[anomaly_idx, i])
+                                for i, name in enumerate(sensor_names)}
+                baseline_mean = {name: float(np.mean(multi_sensor_data[start_idx:end_idx, i]))
+                               for i, name in enumerate(sensor_names)}
+                baseline_std = {name: float(np.std(multi_sensor_data[start_idx:end_idx, i]))
+                              for i, name in enumerate(sensor_names)}
+
+            # Calculate z-scores for each sensor
+            z_scores = {}
+            for name in sensor_names:
+                if baseline_std[name] > 0:
+                    z_scores[name] = abs(anomaly_values[name] - baseline_mean[name]) / baseline_std[name]
+                else:
+                    z_scores[name] = 0.0
+
+            # Rank by z-score
+            ranking = sorted(sensor_names, key=lambda x: z_scores[x], reverse=True)
+
+            return {
+                "point_attribution": {
+                    "anomaly_index": anomaly_idx,
+                    "sensor_values": anomaly_values,
+                    "z_scores": z_scores,
+                    "top_contributors": ranking,
+                    "method": "z_score_analysis"
+                },
+                "global_importance": None,
+                "formatted_summary": self._format_zscore_importance(z_scores, ranking[:3])
+            }
+
+    def _format_zscore_importance(self, z_scores: Dict[str, float], top_sensors: List[str]) -> str:
+        """Format z-score based importance for LLM prompt"""
+        lines = ["**Top Contributing Sensors (by z-score):**"]
+        for i, sensor in enumerate(top_sensors, 1):
+            z = z_scores.get(sensor, 0)
+            severity = "significant" if z > 3 else "moderate" if z > 2 else "minor"
+            lines.append(f"  {i}. {sensor}: z={z:.2f} ({severity} deviation)")
+        return "\n".join(lines)
+
     def _generate_explanation(
         self,
         anomaly_info: Dict[str, Any],
         include_model_interpretation: bool,
-        include_domain_knowledge: bool
+        include_domain_knowledge: bool,
+        include_feature_importance: bool = False
     ) -> str:
         """
         Generate LLM-based explanation using OpenAI API
@@ -179,7 +302,8 @@ class AnomalyExplainer:
         prompt = self._build_explanation_prompt(
             anomaly_info,
             include_model_interpretation,
-            include_domain_knowledge
+            include_domain_knowledge,
+            include_feature_importance
         )
 
         try:
@@ -229,7 +353,8 @@ Focus on helping operators understand and respond to the anomaly."""
         self,
         anomaly_info: Dict[str, Any],
         include_model_interpretation: bool,
-        include_domain_knowledge: bool
+        include_domain_knowledge: bool,
+        include_feature_importance: bool = False
     ) -> str:
         """Build the user prompt with anomaly information"""
 
@@ -277,17 +402,49 @@ Focus on helping operators understand and respond to the anomaly."""
 
 """
 
-        # Add domain knowledge request
+        # Add domain knowledge (Phase 2.4 - Enhanced)
         if include_domain_knowledge:
+            # Get structured domain knowledge from knowledge base
+            top_contributors = None
+            if "feature_importance" in anomaly_info:
+                fi = anomaly_info["feature_importance"]
+                if "point_attribution" in fi:
+                    top_contributors = fi["point_attribution"].get("top_contributors", [])
+
+            domain_knowledge = self.knowledge_retriever.format_knowledge_for_llm(
+                dataset=anomaly_info['dataset'],
+                sensor_name=anomaly_info['sensor'],
+                anomaly_score=anomaly_info.get('score', 0.5),
+                top_contributors=top_contributors,
+                anomaly_pattern=None  # Could be inferred from score deviation
+            )
+
             prompt += f"""
-## Domain Context
-Please explain what this anomaly might mean in the context of:
-- Dataset: {anomaly_info['dataset']} ({self._get_dataset_description(anomaly_info['dataset'])})
-- Sensor type: {anomaly_info['sensor']}
-- What could cause such deviations?
-- What should operators check or do?
+{domain_knowledge}
 
 """
+
+        # Add feature importance section (Phase 2.3)
+        if include_feature_importance and "feature_importance" in anomaly_info:
+            fi = anomaly_info["feature_importance"]
+            prompt += f"""
+## Feature Importance Analysis (Multi-Sensor Attribution)
+{fi.get('formatted_summary', 'No feature importance data available')}
+
+"""
+            # Add detailed attribution if available
+            if "point_attribution" in fi:
+                pa = fi["point_attribution"]
+                if "top_contributors" in pa:
+                    prompt += "### Top Contributing Sensors at Anomaly Point:\n"
+                    for i, sensor in enumerate(pa["top_contributors"][:5], 1):
+                        if "contribution_scores" in pa:
+                            score = pa["contribution_scores"].get(sensor, 0)
+                            prompt += f"  {i}. {sensor}: {score:.1%} contribution\n"
+                        elif "z_scores" in pa:
+                            z = pa["z_scores"].get(sensor, 0)
+                            prompt += f"  {i}. {sensor}: z-score={z:.2f}\n"
+                    prompt += "\n"
 
         prompt += """
 Please provide a comprehensive explanation that:
@@ -296,6 +453,8 @@ Please provide a comprehensive explanation that:
 3. Interprets what this means for the manufacturing process
 4. Assesses the severity and suggests next steps
 """
+        if include_feature_importance and "feature_importance" in anomaly_info:
+            prompt += "5. Identifies which sensors contributed most to the anomaly and why\n"
 
         return prompt
 
