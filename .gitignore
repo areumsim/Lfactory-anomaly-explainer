@@ -25,3 +25,4 @@ temp/
 # Claude config (contains API keys)
 .claude/
 .env
+docs_private/

@@ -65,7 +65,7 @@
 
 ---
 
-# Part I: 학술 논문 형식
+# Part I: 실험 결과 분석
 
 ## Abstract
 
@@ -1259,22 +1259,6 @@ python3 -m experiments.main_experiment \
 - **Platt Scaling**: Logistic regression for score calibration
 - **Quantile Threshold**: Threshold set to k-th percentile of scores
 - **Wilcoxon Test**: Non-parametric test for paired samples
-
-## I. Contact and Citation
-
-**Project**: LFactory Anomaly Detection Framework
-**Repository**: /workspace/arsim/LFactory/
-**Report Date**: 2025-11-24
-
-**Citation** (if using in publication):
-```
-@techreport{lfactory2025,
-  title={Comprehensive Evaluation of Time Series Anomaly Detection Algorithms:
-         A Multi-Dataset, Multi-Seed Study},
-  year={2025},
-  note={480 experiments across synthetic, SKAB, SMD, and AIHub71802 datasets}
-}
-```
 
 ---
 
