@@ -1,0 +1,26 @@
+# Byte-compiled / cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# OS / notebook noise
+.DS_Store
+.ipynb_checkpoints/
+
+# Experiment artifacts and caches
+runs/
+runs_archive/
+reports/batch/
+parquet/
+
+# Generated plots/data under runs
+runs/**/*.png
+runs/**/*.csv
+
+# Archive and temp folders
+archive/
+tmp/
+temp/
+
+# Claude config (contains API keys)
+.claude/

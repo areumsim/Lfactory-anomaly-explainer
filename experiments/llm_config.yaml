@@ -1,0 +1,125 @@
+# LLM Provider Configuration for Explain (Phase 2)
+#
+# This config supports multiple LLM providers for the RAG-Bayes explanation module.
+# Phase 2 is experimental; Phase 1 (Detect) does not require LLMs.
+#
+# Usage:
+#   python -m experiments.main_experiment --explain --llm-provider openai_gpt35 ...
+#   python -m experiments.main_experiment --explain --llm-provider local_exaone_35_78b ...
+
+# Default provider (can be overridden by CLI --llm-provider or env var LLM_PROVIDER)
+default_provider: "local_exaone_35_78b"
+
+# Provider definitions
+providers:
+  # OpenAI Providers
+  openai_gpt35:
+    type: "openai"
+    api_key: "${OPENAI_API_KEY}"  # Set via environment variable
+    model: "gpt-3.5-turbo"
+    organization: null
+    max_tokens: 512
+    temperature: 0.7
+
+  openai_gpt4:
+    type: "openai"
+    api_key: "${OPENAI_API_KEY}"  # Set via environment variable
+    model: "gpt-4"
+    organization: null
+    max_tokens: 512
+    temperature: 0.7
+
+  openai_gpt4_turbo:
+    type: "openai"
+    api_key: "${OPENAI_API_KEY}"  # Set via environment variable
+    model: "gpt-4-turbo-preview"
+    organization: null
+    max_tokens: 512
+    temperature: 0.7
+
+  # Local EXAONE Models
+  local_exaone_35_78b:
+    type: "local"
+    model_path: "/workspace/data2_/nas_kbn02_02/models/huggingface/hub/models--LGAI-EXAONE--EXAONE-3.5-7.8B-Instruct/snapshots/0ff6b5ec7c13b049b253a16a889aa269e6b79a94"
+    device: "cuda:3"
+    model_name: "EXAONE-3.5-7.8B"
+    max_new_tokens: 512
+    temperature: 0.7
+    top_p: 0.9
+
+  local_exaone_35_32b:
+    type: "local"
+    model_path: "/workspace/data2_/nas_kbn02_02/models/huggingface/hub/models--LGAI-EXAONE--EXAONE-3.5-32B-Instruct/snapshots/d6fa88cd8d2c9512b40578bdc44e64909e5a5042"
+    device: "cuda:3"
+    model_name: "EXAONE-3.5-32B"
+    max_new_tokens: 512
+    temperature: 0.7
+    top_p: 0.9
+
+  local_exaone_deep_78b:
+    type: "local"
+    model_path: "/workspace/data2_/nas_kbn02_02/models/huggingface/hub/models--LGAI-EXAONE--EXAONE-Deep-7.8B/snapshots/17b70148e344c28f54a542a030a805b8c96be8c3"
+    device: "cuda:3"
+    model_name: "EXAONE-Deep-7.8B"
+    max_new_tokens: 512
+    temperature: 0.7
+    top_p: 0.9
+
+  local_exaone_deep_32b:
+    type: "local"
+    model_path: "/workspace/data2_/nas_kbn02_02/models/huggingface/hub/models--LGAI-EXAONE--EXAONE-Deep-32B/snapshots/c8855d52a8238a4ec5d781aedbada550336d903f"
+    device: "cuda:3"
+    model_name: "EXAONE-Deep-32B"
+    max_new_tokens: 512
+    temperature: 0.7
+    top_p: 0.9
+
+# Document sources for RAG retrieval
+document_sources:
+  - "README.md"
+  - "docs/HANDBOOK.md"
+  - "docs/HANDBOOK_ko.md"
+  - "EVALUATION_PROTOCOL.md"
+  - "docs/LOCAL_DEFINITION.md"
+  - "docs/RESEARCH_BACKGROUND.md"
+  - "docs/RELATED_WORK.md"
+
+# TF-IDF retrieval settings
+retrieval:
+  top_k: 3  # Number of document chunks to retrieve
+  chunk_size: 500  # Characters per chunk
+  chunk_overlap: 100  # Overlap between chunks
+
+# Bayes prior adjustment rules (hard-coded for Phase 2 prototype)
+bayes_rules:
+  - condition: "imbalance > 0.1"
+    adjustment: "Increase FN cost (C10) relative to FP cost (C01)"
+    reason: "High imbalance datasets require conservative detection"
+
+  - condition: "SNR < 3.0"
+    adjustment: "Enable robust detector (median/MAD)"
+    reason: "Low SNR environments benefit from outlier-resistant methods"
+
+  - condition: "spike anomaly detected"
+    adjustment: "Prioritize time-domain features (rolling stats)"
+    reason: "Spikes are transient; frequency features may miss them"
+
+  - condition: "drift anomaly detected"
+    adjustment: "Prioritize frequency-domain features (SpecCNN)"
+    reason: "Drift manifests as low-frequency shift"
+
+# Explanation template
+explanation_template: |
+  Based on the dataset characteristics and detection results:
+
+  **Retrieved Evidence:**
+  {retrieved_docs}
+
+  **Analysis:**
+  {llm_analysis}
+
+  **Recommended Actions:**
+  {bayes_recommendations}
+
+  **References:**
+  {citations}

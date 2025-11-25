@@ -1,0 +1,66 @@
+# 공통 실험 설정 파일 (YAML)
+# - 이 파일은 기본 실행 파라미터와 입/출력 경로를 정의합니다.
+# - CLI 인자로 같은 항목을 지정하면 CLI 값이 우선합니다.
+
+general:
+  dataset: "synthetic"         # {synthetic|SKAB|SMD|AIHub71802}
+  data_root: ""                # 예: /workspace/data1_arsim/LFactory_d
+  split: "test"                # train|test|Validation
+  label_scheme: "binary"       # binary|risk4 (AIHub 전용)
+  seed: 42
+  run_id: ""
+
+output:
+  out_dir: ""                  # 비우면 runs/<dataset>_<ts>_<run-id>
+  out_json: ""
+  out_csv: ""
+  features_csv: ""
+  plots_dir: ""
+
+detector:
+  type: "rule"                 # rule|ml|hybrid|speccnn
+  # Rule params
+  z_window: 50
+  z_threshold: 3.0
+  min_std: 0.001
+  z_robust: false
+  mad_eps: 0.000001
+  # ML params
+  ml_method: "knn"             # knn|isolation_forest|lstm_ae
+  ml_k: 10
+  ml_quantile: 0.99
+  # IsolationForest params
+  if_window: 50
+  if_contamination: 0.1
+  if_estimators: 100
+  # LSTM Autoencoder params
+  lstm_seq_len: 50
+  lstm_latent_dim: 32
+  lstm_epochs: 50
+  lstm_lr: 0.001
+  lstm_batch_size: 32
+  lstm_quantile: 0.95
+  # Hybrid params
+  hybrid_alpha: 0.5
+  hybrid_quantile: 0.99
+  # SpecCNN-lite params
+  sc_window: 128
+  sc_hop: 16
+  sc_quantile: 0.99
+
+calibration:
+  method: "none"               # none|platt|isotonic|temperature
+  ece_bins: 10
+  platt_lr: 0.01
+  platt_epochs: 2000
+  platt_l2: 0.001
+
+decision:
+  cost_optimize: false
+  apply_cost_threshold: false
+  costs: "0,1,5,0"             # c00,c01,c10,c11
+
+loader:
+  sample_limit: 0
+  file_index: -1
+  min_length: 0

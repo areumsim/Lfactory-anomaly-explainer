@@ -1,0 +1,26 @@
+root: "/workspace/data1/arsim/LFactory_d"
+
+datasets:
+  SKAB:
+    type: skab
+    path: "${root}/SKAB"
+    pattern: "{subset}/{file}.csv"  # subset: valve1,valve2,other,anomaly-free
+    time_column: "auto"             # 로더가 자동 추론/매핑
+    label: "auto"                   # 파일/시나리오별 라벨 규칙
+
+  SMD:
+    type: smd
+    path: "${root}/SMD"
+    train_dir: "train"
+    test_dir: "test"
+    label_dir: "test_label"
+    delimiter: ","
+    has_header: false
+
+  AIHub71802:
+    type: aihub71802
+    path: "${root}/manufacturing_transport_71802"
+    splits: ["Training", "Validation"]
+    modalities: ["sensor"]          # ["sensor","image"] 로 확장 가능
+    label_scheme: "binary"          # or "risk4"
+
