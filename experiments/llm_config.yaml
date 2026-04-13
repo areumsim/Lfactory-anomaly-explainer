@@ -41,7 +41,7 @@ providers:
   local_exaone_35_78b:
     type: "local"
     model_path: "/workspace/data2_/nas_kbn02_02/models/huggingface/hub/models--LGAI-EXAONE--EXAONE-3.5-7.8B-Instruct/snapshots/0ff6b5ec7c13b049b253a16a889aa269e6b79a94"
-    device: "cuda:3"
+    device: "cuda:0"
     model_name: "EXAONE-3.5-7.8B"
     max_new_tokens: 512
     temperature: 0.7
@@ -50,7 +50,7 @@ providers:
   local_exaone_35_32b:
     type: "local"
     model_path: "/workspace/data2_/nas_kbn02_02/models/huggingface/hub/models--LGAI-EXAONE--EXAONE-3.5-32B-Instruct/snapshots/d6fa88cd8d2c9512b40578bdc44e64909e5a5042"
-    device: "cuda:3"
+    device: "cuda:0"
     model_name: "EXAONE-3.5-32B"
     max_new_tokens: 512
     temperature: 0.7
@@ -59,7 +59,7 @@ providers:
   local_exaone_deep_78b:
     type: "local"
     model_path: "/workspace/data2_/nas_kbn02_02/models/huggingface/hub/models--LGAI-EXAONE--EXAONE-Deep-7.8B/snapshots/17b70148e344c28f54a542a030a805b8c96be8c3"
-    device: "cuda:3"
+    device: "cuda:0"
     model_name: "EXAONE-Deep-7.8B"
     max_new_tokens: 512
     temperature: 0.7
@@ -68,7 +68,7 @@ providers:
   local_exaone_deep_32b:
     type: "local"
     model_path: "/workspace/data2_/nas_kbn02_02/models/huggingface/hub/models--LGAI-EXAONE--EXAONE-Deep-32B/snapshots/c8855d52a8238a4ec5d781aedbada550336d903f"
-    device: "cuda:3"
+    device: "cuda:0"
     model_name: "EXAONE-Deep-32B"
     max_new_tokens: 512
     temperature: 0.7

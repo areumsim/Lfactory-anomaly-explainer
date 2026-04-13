@@ -1,0 +1,382 @@
+attack_scenarios:
+  multi_point:
+    description: Coordinated attacks across multiple components
+    examples:
+    - effect: Sensor spoofing + actuator manipulation to mask attack
+      targets:
+      - sensor_2
+      - actuator_1
+      type: coordinated
+    - effect: Chemical over-dosing while spoofing quality sensor
+      targets:
+      - sensor_4
+      - actuator_6
+      type: coordinated
+  single_point:
+    description: Attacks targeting a single sensor or actuator
+    examples:
+    - effect: Tank overflow/underflow by hiding true water level
+      target: sensor_2
+      type: sensor_spoofing
+    - effect: Valve forced open/closed, disrupting water supply
+      target: actuator_1
+      type: actuator_manipulation
+    - effect: Pump forced on/off, disrupting flow
+      target: actuator_2
+      type: actuator_manipulation
+correlation_rules:
+- anomaly: Divergence indicates sensor spoofing or leak
+  relation: Inflow rate should correlate with tank level rise
+  sensors:
+  - sensor_1
+  - sensor_2
+- anomaly: Valve state mismatch with tank level indicates attack
+  relation: Valve opens when level < LL, closes when level > HH
+  sensors:
+  - sensor_1
+  - sensor_2
+- anomaly: pH drift despite pump activity suggests sensor spoofing
+  relation: Chemical dosing pumps control pH level
+  sensors:
+  - sensor_3
+  - sensor_4
+  - sensor_5
+- anomaly: Pressure drop with stable flow suggests membrane breach
+  relation: Differential pressure indicates membrane fouling
+  sensors:
+  - sensor_7
+  - sensor_8
+  - sensor_9
+- anomaly: Level divergence between stages indicates flow disruption
+  relation: Upstream permeate fills downstream tank
+  sensors:
+  - sensor_9
+  - sensor_13
+- anomaly: Conductivity anomaly indicates membrane failure
+  relation: Permeate should have lower conductivity than feed
+  sensors:
+  - sensor_14
+  - sensor_16
+dataset:
+  anomaly_rate: ~12% (attack dataset)
+  description: >
+    Water treatment testbed with 6 sub-processes: raw water intake,
+    pre-treatment, ultrafiltration, de-chlorination, reverse osmosis,
+    and backwash cleaning. Multiple sensors/actuators monitor physical
+    and chemical properties. Attack scenarios target specific components
+    to disrupt treatment.
+  domain: Water Treatment Plant (CPS)
+  full_name: Secure Water Treatment Testbed
+  name: SWaT
+  num_sensors: 51
+  sampling_rate: 1 Hz
+processes:
+  P1:
+    actuators:
+    - actuator_1
+    - actuator_2
+    - actuator_3
+    description: Stores and supplies raw water to the treatment process
+    name: Raw Water Intake
+    normal_behavior: Tank level oscillates between HH and LL as valve opens/closes
+    sensors:
+    - sensor_1
+    - sensor_2
+  P2:
+    actuators:
+    - actuator_1
+    - actuator_2
+    - actuator_3
+    - actuator_4
+    - actuator_5
+    - actuator_6
+    - actuator_7
+    description: Adjusts water pH and conductivity via chemical dosing
+    name: Pre-treatment (Chemical Dosing)
+    normal_behavior: pH maintained near 7.0, ORP stable
+    sensors:
+    - sensor_3
+    - sensor_4
+    - sensor_5
+    - sensor_6
+  P3:
+    actuators:
+    - actuator_1
+    - actuator_2
+    - actuator_3
+    - actuator_4
+    - actuator_5
+    - actuator_6
+    description: Membrane filtration to remove suspended particles
+    name: Ultrafiltration (UF)
+    normal_behavior: Differential pressure indicates membrane status, level oscillates
+    sensors:
+    - sensor_7
+    - sensor_8
+    - sensor_9
+  P4:
+    actuators:
+    - actuator_1
+    - actuator_2
+    - actuator_3
+    - actuator_4
+    - actuator_5
+    description: UV treatment and chemical dosing to remove chlorine
+    name: De-Chlorination
+    normal_behavior: Chlorine level should decrease after UV treatment
+    sensors:
+    - sensor_10
+    - sensor_11
+    - sensor_12
+    - sensor_13
+  P5:
+    actuators:
+    - actuator_1
+    - actuator_2
+    - actuator_3
+    - actuator_4
+    - actuator_5
+    - actuator_6
+    description: Final purification via RO membranes
+    name: Reverse Osmosis (RO)
+    normal_behavior: Permeate quality sensors and flow rate sensors monitor RO performance
+    sensors:
+    - sensor_14
+    - sensor_15
+    - sensor_16
+    - sensor_17
+    - sensor_18
+    - sensor_19
+    - sensor_20
+    - sensor_21
+  P6:
+    actuators:
+    - actuator_1
+    - actuator_2
+    description: Cleaning of UF membranes via reverse flow
+    name: Backwash
+    normal_behavior: Periodic backwash cycles when differential pressure exceeds threshold
+    sensors:
+    - sensor_22
+sensors:
+  sensor_1:
+    anomaly_indicators:
+      high: Valve stuck open, upstream pressure surge
+      low: Valve stuck closed, supply disruption
+      sudden_change: Valve manipulation attack, sensor spoofing
+    description: Raw water inflow rate to tank
+    normal_range:
+    - 0.5
+    - 3.0
+    process: P1
+    type: flow
+    unit: m^3/h
+  sensor_2:
+    anomaly_indicators:
+      high: Overflow risk, valve stuck open
+      low: Tank drain, pump running without inflow
+      sudden_change: Pump or valve state change attack
+    description: Water level in raw water tank
+    normal_range:
+    - 250
+    - 800
+    process: P1
+    type: level
+    unit: mm
+  sensor_3:
+    anomaly_indicators:
+      high: Excessive chemical dosing
+      low: Excessive acid dosing
+    description: pH level after chemical dosing
+    normal_range:
+    - 6.5
+    - 8.0
+    process: P2
+    type: chemical (pH)
+    unit: pH
+  sensor_4:
+    anomaly_indicators:
+      high: Over-oxidation, excess chlorine
+      low: Under-oxidation, insufficient disinfection
+    description: Oxidation-Reduction Potential after dosing
+    normal_range:
+    - 200
+    - 600
+    process: P2
+    type: chemical (ORP)
+    unit: mV
+  sensor_5:
+    description: Water conductivity (total dissolved solids proxy)
+    normal_range:
+    - 100
+    - 400
+    process: P2
+    type: chemical (conductivity)
+    unit: uS/cm
+  sensor_6:
+    description: Flow rate through pre-treatment stage
+    normal_range:
+    - 0.5
+    - 3.0
+    process: P2
+    type: flow
+    unit: m^3/h
+  sensor_7:
+    anomaly_indicators:
+      high: Membrane fouling, needs backwash
+      low: Membrane breach or sensor failure
+    description: Differential pressure across UF membrane (fouling indicator)
+    normal_range:
+    - 0
+    - 50
+    process: P3
+    type: pressure (differential)
+    unit: kPa
+  sensor_8:
+    description: UF permeate flow rate
+    normal_range:
+    - 0.5
+    - 3.0
+    process: P3
+    type: flow
+    unit: m^3/h
+  sensor_9:
+    description: Water level in UF feed tank
+    normal_range:
+    - 250
+    - 800
+    process: P3
+    type: level
+    unit: mm
+  sensor_10:
+    description: Free chlorine after UV treatment
+    normal_range:
+    - 0
+    - 1.5
+    process: P4
+    type: chemical (chlorine)
+    unit: mg/L
+  sensor_11:
+    description: Chlorine level after de-chlorination
+    normal_range:
+    - 0
+    - 1.5
+    process: P4
+    type: chemical (chlorine)
+    unit: mg/L
+  sensor_12:
+    description: Flow rate through de-chlorination stage
+    normal_range:
+    - 0.5
+    - 3.0
+    process: P4
+    type: flow
+    unit: m^3/h
+  sensor_13:
+    description: Water level in RO feed tank
+    normal_range:
+    - 250
+    - 800
+    process: P4
+    type: level
+    unit: mm
+  sensor_14:
+    description: RO feed water pH
+    normal_range:
+    - 6.5
+    - 8.0
+    process: P5
+    type: chemical (pH)
+    unit: pH
+  sensor_15:
+    description: RO feed water ORP
+    normal_range:
+    - 200
+    - 600
+    process: P5
+    type: chemical (ORP)
+    unit: mV
+  sensor_16:
+    description: RO permeate conductivity (purity indicator)
+    normal_range:
+    - 50
+    - 200
+    process: P5
+    type: chemical (conductivity)
+    unit: uS/cm
+  sensor_17:
+    description: RO reject conductivity
+    normal_range:
+    - 100
+    - 400
+    process: P5
+    type: chemical (conductivity)
+    unit: uS/cm
+  sensor_18:
+    description: RO feed flow rate
+    normal_range:
+    - 0.5
+    - 3.0
+    process: P5
+    type: flow
+    unit: m^3/h
+  sensor_19:
+    description: RO permeate flow rate
+    normal_range:
+    - 0.2
+    - 2.0
+    process: P5
+    type: flow
+    unit: m^3/h
+  sensor_20:
+    description: RO reject flow rate
+    normal_range:
+    - 0.1
+    - 1.0
+    process: P5
+    type: flow
+    unit: m^3/h
+  sensor_21:
+    description: RO recirculation flow rate
+    normal_range:
+    - 0.5
+    - 3.0
+    process: P5
+    type: flow
+    unit: m^3/h
+  sensor_22:
+    description: Backwash flow rate
+    normal_range:
+    - 0
+    - 5.0
+    process: P6
+    type: flow
+    unit: m^3/h
+severity_levels:
+  critical:
+    description: Immediate safety/quality risk
+    indicators:
+    - Tank overflow (level > HHH)
+    - Chemical over-dosing (pH < 4 or pH > 10)
+    - Membrane breach (conductivity surge)
+    response: Emergency shutdown
+  high:
+    description: Process disruption within 1 hour
+    indicators:
+    - Tank level approaching limits
+    - Flow rate deviation > 50%
+    - Chemical parameter out of range
+    response: Operator alert, investigate within 15 minutes
+  low:
+    description: Normal operational variation
+    indicators:
+    - Periodic level oscillation (normal control cycle)
+    - Backwash cycle activation
+    response: No action required
+  medium:
+    description: Degraded performance
+    indicators:
+    - Membrane differential pressure rising
+    - Minor flow rate fluctuations
+    - Sensor noise increase
+    response: Log and schedule maintenance

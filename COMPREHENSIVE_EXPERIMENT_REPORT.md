@@ -1,11 +1,20 @@
 # 종합 이상 탐지 실험 보고서
 ## Comprehensive Anomaly Detection Experimental Analysis
 
-**실험 기간**: 2025-11-24
-**총 실험 횟수**: 480 runs (460 성공, 20 실패)
-**분석된 결과**: 353 runs
-**데이터셋**: synthetic, SKAB, SMD (+ AIHub71802)
-**탐지기**: 6 types × 20 random seeds
+> ⚠️ **주의**: 이 문서는 Phase 1 (2025-11) 결과를 기반으로 작성되었습니다.
+> 최신 결과는 `docs/EXPERIMENT_RESULTS_4TH.md` (2026-03-31 감사 후 수정본)를 참조하세요.
+> 비판적 감사 결과는 `docs/CRITICAL_AUDIT.md`를 참조하세요.
+>
+> **주요 변경사항** (2026-03-31):
+> - SMD: 이전 결과는 machine-1-1.txt 단일 파일 기반. 28머신 전체 재실험 진행 중
+> - AIHub: 825개 유효 결과 확인, 재집계 완료 (label_rate ~54% caveat 있음)
+> - SKAB: SpecCNN spectral flux 교체 후 AUC-PR 0.446으로 1위
+> - LLM Explanation: N=39 ablation 완료, feature attribution +32% faithfulness (p=0.000275)
+
+**실험 기간**: 2025-11-24 ~ 2026-03-31
+**총 실험 횟수**: 1,571+ runs (검증된 deduped 결과, 재실험 진행 중)
+**데이터셋**: synthetic, SKAB, SMD, AIHub71802
+**탐지기**: 6 types × 5~20 random seeds
 
 ---
 
@@ -23,6 +32,7 @@
 - 🥉 **IsolationForest**: F1=0.033±0.018, AUC-PR=0.241±0.007
 
 **SMD 데이터셋** (서버 메트릭):
+> ⚠️ 아래 결과는 machine-1-1.txt 단일 파일 기반 (2025-11 Phase 1). 28머신 전체 재실험 진행 중.
 - 🥇 **kNN**: AUC-PR=0.563 (최고 ranking 성능)
 - 🥈 **IsolationForest**: F1=0.458±0.026, AUC-PR=0.543±0.013 (최고 F1)
 - 🥉 **SpecCNN**: F1=0.173

@@ -1,4 +1,4 @@
-root: "/workspace/data1/arsim/LFactory_d"
+root: "/workspace/data/nas_kbn02_01/dataset/ar_all/LFactory_d"
 
 datasets:
   SKAB:
@@ -17,8 +17,19 @@ datasets:
     delimiter: ","
     has_header: false
 
+  SWaT:
+    type: swat
+    path: "/workspace/arsim/LFactory/data_SWaT"
+    # Kaggle version (Phase A): merged.csv (1.4M rows, 52 sensors, 3.8% attack rate)
+    # Source: https://www.kaggle.com/datasets/vishala28/swat-dataset-secure-water-treatment-system
+    # Phase B: iTrust full dataset (11d normal + 4d attack, ~946K rows, ~12% rate)
+
   AIHub71802:
     type: aihub71802
+    # path already includes the dataset directory name.
+    # data_router resolves this to an absolute path and passes it directly
+    # to loader_aihub_71802.load_one_timeseries(root=<resolved_path>).
+    # The loader detects whether root already ends with the dataset dir.
     path: "${root}/manufacturing_transport_71802"
     splits: ["Training", "Validation"]
     modalities: ["sensor"]          # ["sensor","image"] 로 확장 가능

@@ -4,7 +4,7 @@
 
 general:
   dataset: "synthetic"         # {synthetic|SKAB|SMD|AIHub71802}
-  data_root: ""                # 예: /workspace/data1_arsim/LFactory_d
+  data_root: ""                # 예: /workspace/data/nas_kbn02_01/dataset/ar_all/LFactory_d
   split: "test"                # train|test|Validation
   label_scheme: "binary"       # binary|risk4 (AIHub 전용)
   seed: 42
@@ -47,6 +47,9 @@ detector:
   sc_window: 128
   sc_hop: 16
   sc_quantile: 0.99
+  sc_w_low: -0.2
+  sc_w_mid: 0.6
+  sc_w_high: 0.6
 
 calibration:
   method: "none"               # none|platt|isotonic|temperature

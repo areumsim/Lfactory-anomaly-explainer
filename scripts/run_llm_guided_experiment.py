@@ -1,15 +1,21 @@
 """
 Phase 3.2: Baseline vs LLM-guided Experiment
 
-Compare default parameters vs LLM-suggested parameters
+Compare default parameters vs LLM-suggested parameters.
+Supports SKAB, SMD, SWaT datasets.
+
+Usage:
+    python scripts/run_llm_guided_experiment.py --dataset SKAB
+    python scripts/run_llm_guided_experiment.py --dataset SWaT --data-root /path/to/swat
+    python scripts/run_llm_guided_experiment.py --dataset SMD --data-root /path/to/data
 """
 import sys
 import os
+import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
 import numpy as np
-import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any
@@ -18,54 +24,88 @@ from typing import Dict, List, Any
 from experiments.ml_detector_isolation_forest import detect_isolation_forest
 from experiments.ml_detector_knn import detect_knn
 from experiments.metrics import binary_metrics
+from experiments.data.data_router import load_timeseries
+
+parser = argparse.ArgumentParser(description="Phase 3.2: Baseline vs LLM-guided")
+parser.add_argument("--dataset", default="SKAB", choices=["SKAB", "SMD", "SWaT", "AIHub71802"])
+parser.add_argument("--data-root", default="/workspace/data/nas_kbn02_01/dataset/ar_all/LFactory_d")
+parser.add_argument("--seeds", type=int, default=5)
+parser.add_argument("--output-dir", default="runs/llm_guided_experiment")
+args = parser.parse_args()
 
 print("=" * 70)
-print("Phase 3.2: Baseline vs LLM-guided Experiment")
+print(f"Phase 3.2: Baseline vs LLM-guided — {args.dataset}")
 print("=" * 70)
 
-# Load SKAB data
-DATA_ROOT = "/workspace/data1/arsim/LFactory_d"
-skab_file = f"{DATA_ROOT}/SKAB/valve1/0.csv"
+# Load data via data_router
+split_map = {"AIHub71802": "Validation", "SWaT": "test"}
+split = split_map.get(args.dataset, "test")
 
-print(f"\n1. Loading data: {skab_file}")
-df = pd.read_csv(skab_file, sep=';')
+print(f"\n1. Loading {args.dataset} data...")
+data = load_timeseries(args.dataset, args.data_root, split=split)
+series = data["series"]
+labels = data["labels"]
 
-# Use one sensor for experiments (Accelerometer1RMS)
-sensor_col = "Accelerometer1RMS"
-series = df[sensor_col].values.tolist()
-labels = df['anomaly'].values.astype(int).tolist()
+# For very long series, use tail portion with anomalies
+if len(series) > 500000:
+    tail_n = min(200000, len(series))
+    series = series[-tail_n:]
+    labels = labels[-tail_n:]
+    print(f"   (Using last {tail_n} points for efficiency)")
 
 print(f"   Samples: {len(series)}")
 print(f"   Anomaly rate: {sum(labels)/len(labels):.2%}")
 
-# Define experiment configurations
-experiments = {
-    "isolation_forest": {
-        "baseline": {
-            "window": 50,
-            "contamination": 0.1,
-            "n_estimators": 100
+# Define experiment configurations per dataset
+anomaly_rate = sum(labels) / len(labels) if labels else 0.1
+
+CONFIGS = {
+    "SKAB": {
+        "isolation_forest": {
+            "baseline": {"window_size": 50, "contamination": 0.1, "n_estimators": 100},
+            "llm_guided": {"window_size": 20, "contamination": 0.35, "n_estimators": 200},
         },
-        "llm_guided": {
-            "window": 20,  # LLM suggested smaller window
-            "contamination": 0.35,  # Match anomaly rate
-            "n_estimators": 200  # More estimators
-        }
+        "knn": {
+            "baseline": {"k": 10, "quantile": 0.99},
+            "llm_guided": {"k": 5, "quantile": 0.95},
+        },
     },
-    "knn": {
-        "baseline": {
-            "k": 10,
-            "quantile": 0.99
+    "SMD": {
+        "isolation_forest": {
+            "baseline": {"window_size": 50, "contamination": 0.1, "n_estimators": 100},
+            "llm_guided": {"window_size": 30, "contamination": 0.15, "n_estimators": 150},
         },
-        "llm_guided": {
-            "k": 5,  # Smaller k for local sensitivity
-            "quantile": 0.95  # Lower quantile
-        }
-    }
+        "knn": {
+            "baseline": {"k": 10, "quantile": 0.99},
+            "llm_guided": {"k": 7, "quantile": 0.97},
+        },
+    },
+    "SWaT": {
+        "isolation_forest": {
+            "baseline": {"window_size": 50, "contamination": 0.1, "n_estimators": 100},
+            "llm_guided": {"window_size": 30, "contamination": min(0.3, anomaly_rate * 2), "n_estimators": 200},
+        },
+        "knn": {
+            "baseline": {"k": 10, "quantile": 0.99},
+            "llm_guided": {"k": 5, "quantile": 0.95},
+        },
+    },
+    "AIHub71802": {
+        "isolation_forest": {
+            "baseline": {"window_size": 30, "contamination": 0.1, "n_estimators": 100},
+            "llm_guided": {"window_size": 15, "contamination": 0.5, "n_estimators": 200},
+        },
+        "knn": {
+            "baseline": {"k": 10, "quantile": 0.99},
+            "llm_guided": {"k": 3, "quantile": 0.90},
+        },
+    },
 }
 
+experiments = CONFIGS.get(args.dataset, CONFIGS["SKAB"])
+
 # Seeds for experiments
-seeds = [42, 142, 242, 342, 442]
+seeds = [42 + i * 100 for i in range(args.seeds)]
 
 # Results storage
 all_results = []
@@ -88,16 +128,16 @@ for detector_name, configs in experiments.items():
             if detector_name == "isolation_forest":
                 result = detect_isolation_forest(
                     series=series,
-                    window=params["window"],
-                    contamination=params["contamination"],
-                    n_estimators=params["n_estimators"],
-                    random_state=seed
+                    window_size=params.get("window_size", 50),
+                    contamination=params.get("contamination", 0.1),
+                    n_estimators=params.get("n_estimators", 100),
+                    seed=seed,
                 )
             elif detector_name == "knn":
                 result = detect_knn(
                     series=series,
-                    k=params["k"],
-                    quantile=params["quantile"]
+                    k=params.get("k", 10),
+                    quantile=params.get("quantile", 0.99),
                 )
 
             # Compute metrics
@@ -165,7 +205,7 @@ print("\n" + "=" * 70)
 print("4. Statistical Significance (Wilcoxon signed-rank test)")
 print("=" * 70)
 
-from scipy.stats import wilcoxon
+from scripts.statistical_test import _wilcoxon_test, cliffs_delta
 
 for detector in ["isolation_forest", "knn"]:
     baseline = next(r for r in all_results if r["detector"] == detector and r["config"] == "baseline")
@@ -175,17 +215,19 @@ for detector in ["isolation_forest", "knn"]:
     l_f1 = [m["f1"] for m in llm_guided["individual_runs"]]
 
     try:
-        stat, p_value = wilcoxon(b_f1, l_f1)
-        sig = "✓ Significant" if p_value < 0.05 else "✗ Not significant"
-        print(f"\n{detector}: p-value={p_value:.4f} {sig}")
+        pairs = list(zip(b_f1, l_f1))
+        w = _wilcoxon_test(pairs)
+        cd = cliffs_delta(b_f1, l_f1)
+        sig = "Significant" if w["p_value"] < 0.05 else "Not significant"
+        print(f"\n{detector}: Wilcoxon p={w['p_value']:.4f} ({sig}), Cliff's d={cd['delta']:.3f} ({cd['interpretation']})")
     except Exception as e:
-        print(f"\n{detector}: Could not compute (need more samples)")
+        print(f"\n{detector}: Could not compute ({e})")
 
 # Save results
-output_dir = Path("./runs/llm_guided_experiment")
-output_dir.mkdir(exist_ok=True)
+output_dir = Path(args.output_dir)
+output_dir.mkdir(parents=True, exist_ok=True)
 
-output_file = output_dir / f"comparison_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+output_file = output_dir / f"comparison_{args.dataset}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
 
 def convert_numpy(obj):
     if isinstance(obj, np.ndarray):

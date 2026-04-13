@@ -13,6 +13,9 @@ runs_archive/
 reports/batch/
 parquet/
 
+# Large raw datasets (not for git)
+data_SWaT/
+
 # Generated plots/data under runs
 runs/**/*.png
 runs/**/*.csv

@@ -34,6 +34,7 @@ def detect_lstm_ae(
     batch_size: int = 32,
     quantile: float = 0.95,
     random_state: int = 42,
+    device: str = "auto",
     **kwargs
 ) -> Dict[str, Any]:
     """Detect anomalies using LSTM Autoencoder.
@@ -47,6 +48,7 @@ def detect_lstm_ae(
         batch_size: Batch size for training
         quantile: Threshold quantile for binary predictions
         random_state: Random seed for reproducibility
+        device: Device for training ("auto", "cuda:0", "cuda:1", "cpu")
         **kwargs: Additional arguments (ignored)
 
     Returns:
@@ -79,8 +81,16 @@ def detect_lstm_ae(
             }
         }
 
+    # Resolve device — default to CPU (CUDA init overhead can be >30s in some envs)
+    if device == "auto":
+        dev = torch.device("cpu")
+    else:
+        dev = torch.device(device)
+
     # Set random seed
     torch.manual_seed(random_state)
+    if dev.type == "cuda":
+        torch.cuda.manual_seed(random_state)
 
     # Define LSTM Autoencoder model
     class LSTMAutoencoder(nn.Module):
@@ -140,11 +150,16 @@ def detect_lstm_ae(
     normalized_series = [(x - mean_val) / std_val for x in series]
     normalized_sequences = create_sequences(normalized_series, sequence_length)
 
-    # Convert to tensors
-    X = torch.FloatTensor(normalized_sequences).unsqueeze(-1)  # (N, seq_len, 1)
+    # Convert to tensors via numpy for faster creation, then move to device
+    try:
+        import numpy as np
+        arr = np.array(normalized_sequences, dtype=np.float32)
+        X = torch.from_numpy(arr).unsqueeze(-1).to(dev)  # (N, seq_len, 1)
+    except ImportError:
+        X = torch.FloatTensor(normalized_sequences).unsqueeze(-1).to(dev)
 
-    # Initialize model
-    model = LSTMAutoencoder(input_dim=1, latent_dim=latent_dim)
+    # Initialize model on device
+    model = LSTMAutoencoder(input_dim=1, latent_dim=latent_dim).to(dev)
     criterion = nn.MSELoss(reduction='none')
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -154,15 +169,12 @@ def detect_lstm_ae(
 
     for epoch in range(epochs):
         total_loss = 0.0
-        # Shuffle data each epoch (simple approach)
-        indices = list(range(len(X)))
 
         for batch_idx in range(num_batches):
             start_idx = batch_idx * batch_size
             end_idx = min(start_idx + batch_size, len(X))
-            batch_indices = indices[start_idx:end_idx]
 
-            batch_x = X[batch_indices]
+            batch_x = X[start_idx:end_idx]
 
             # Forward pass
             reconstructed = model(batch_x)
@@ -175,11 +187,16 @@ def detect_lstm_ae(
 
             total_loss += loss.item()
 
-    # Compute reconstruction errors
+    # Compute reconstruction errors (batched for large datasets)
     model.eval()
+    all_errors = []
     with torch.no_grad():
-        reconstructed = model(X)
-        reconstruction_errors_seq = criterion(reconstructed, X).squeeze(-1)  # (N, seq_len)
+        for i in range(0, len(X), batch_size):
+            batch = X[i:i+batch_size]
+            recon = model(batch)
+            errs = criterion(recon, batch).squeeze(-1)  # (batch, seq_len)
+            all_errors.append(errs)
+    reconstruction_errors_seq = torch.cat(all_errors, dim=0)  # (N, seq_len)
 
     # Map errors back to time series points
     # Each point can appear in multiple sequences, so average the errors
@@ -195,12 +212,22 @@ def detect_lstm_ae(
 
     # Average errors
     scores = []
+    first_valid_score = None
     for i in range(n):
         if error_counts[i] > 0:
-            scores.append(error_sums[i] / error_counts[i])
+            s = error_sums[i] / error_counts[i]
+            if first_valid_score is None:
+                first_valid_score = s
+            scores.append(s)
         else:
-            # First few points may not be in any sequence
-            scores.append(0.0)
+            # First few points not covered by any sequence — filled after loop
+            scores.append(None)
+
+    # Back-fill initial uncovered points with the first valid score
+    # so early anomalies are not missed due to zero padding
+    if first_valid_score is None:
+        first_valid_score = 0.0
+    scores = [s if s is not None else first_valid_score for s in scores]
 
     # Normalize scores to [0, 1] for consistency
     if len(scores) > 0 and max(scores) > 0:

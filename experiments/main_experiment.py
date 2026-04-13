@@ -30,6 +30,7 @@ from . import ml_detector_isolation_forest
 from . import ml_detector_lstm_ae
 from . import hybrid_detector
 from . import spec_cnn
+from . import ml_detector_anomaly_transformer
 from . import metrics
 from . import result_manager
 from . import calibration
@@ -161,6 +162,9 @@ def _apply_config_overrides(args: argparse.Namespace, cfg: Dict[str, Any]) -> ar
     maybe_set("detector", "sc_window", "sc_window")
     maybe_set("detector", "sc_hop", "sc_hop")
     maybe_set("detector", "sc_quantile", "sc_quantile")
+    maybe_set("detector", "sc_w_low", "sc_w_low")
+    maybe_set("detector", "sc_w_mid", "sc_w_mid")
+    maybe_set("detector", "sc_w_high", "sc_w_high")
     # calibration
     maybe_set("calibration", "method", "calibrate")
     maybe_set("calibration", "ece_bins", "ece_bins")
@@ -195,7 +199,12 @@ def _render_run_report(result: Dict[str, Any], detector_name: str, out_csv: str,
     lines.append(
         f"- Precision {m.get('precision', 0):.3f}, Recall {m.get('recall', 0):.3f}, F1 {m.get('f1', 0):.3f}, Accuracy {m.get('accuracy', 0):.3f}"
     )
-    lines.append(f"- AUC-ROC {m.get('auc_roc', 0):.3f}, AUC-PR {m.get('auc_pr', 0):.3f}, ECE {m.get('ece', 0):.3f}\n")
+    lines.append(f"- AUC-ROC {m.get('auc_roc', 0):.3f}, AUC-PR {m.get('auc_pr', 0):.3f}, ECE {m.get('ece', 0):.3f}")
+    lines.append(
+        f"- **Optimal-F1** {m.get('optimal_f1', 0):.3f} "
+        f"(thr={m.get('optimal_f1_threshold', 0):.4g}, "
+        f"P={m.get('optimal_f1_precision', 0):.3f}, R={m.get('optimal_f1_recall', 0):.3f})\n"
+    )
     ev = result.get("event_metrics") or {}
     if ev:
         lines.append("## 이벤트 타이밍")
@@ -333,10 +342,13 @@ def run_detect(args: argparse.Namespace) -> Dict[str, Any]:
                 batch_size=getattr(args, "lstm_batch_size", 32),
                 quantile=getattr(args, "lstm_quantile", 0.95),
                 random_state=args.seed,
+                device=getattr(args, "device", "auto"),
             )
         else:
             raise ValueError(f"Unsupported ml_method: {ml_method}")
     elif args.detector == "hybrid":
+        ensemble_method = getattr(args, "ensemble_method", "linear")
+        ml_backend = getattr(args, "ml_backend", "knn")
         det = hybrid_detector.detect_hybrid(
             data["series"],
             alpha=args.hybrid_alpha,
@@ -346,6 +358,11 @@ def run_detect(args: argparse.Namespace) -> Dict[str, Any]:
             robust=args.z_robust,
             ml_k=args.ml_k,
             quantile=args.hybrid_quantile,
+            method=ensemble_method,
+            ml_backend=ml_backend,
+            labels=data.get("labels"),
+            seed=args.seed,
+            device=getattr(args, "device", "auto"),
         )
     elif args.detector == "speccnn":
         det = spec_cnn.detect_speccnn(
@@ -353,6 +370,21 @@ def run_detect(args: argparse.Namespace) -> Dict[str, Any]:
             window=args.sc_window,
             hop=args.sc_hop,
             quantile=args.sc_quantile,
+            w_low=getattr(args, "sc_w_low", -0.2),
+            w_mid=getattr(args, "sc_w_mid", 0.6),
+            w_high=getattr(args, "sc_w_high", 0.6),
+        )
+    elif args.detector == "anomaly_transformer":
+        det = ml_detector_anomaly_transformer.detect_anomaly_transformer(
+            data["series"],
+            seq_len=getattr(args, "at_seq_len", 100),
+            d_model=getattr(args, "at_d_model", 64),
+            n_heads=getattr(args, "at_n_heads", 4),
+            n_layers=getattr(args, "at_n_layers", 2),
+            epochs=getattr(args, "at_epochs", 10),
+            quantile=getattr(args, "at_quantile", 0.99),
+            random_state=args.seed,
+            device=getattr(args, "device", "auto"),
         )
     else:
         raise ValueError(f"Unsupported detector: {args.detector}")
@@ -373,6 +405,13 @@ def run_detect(args: argparse.Namespace) -> Dict[str, Any]:
     m["auc_roc"] = roc.auc
     m["auc_pr"] = pr.auc
 
+    # Optimal-F1 threshold (oracle upper bound)
+    opt_f1_thr, opt_f1, opt_f1_m = metrics.find_optimal_f1_threshold(labels_metric, det["scores"])
+    m["optimal_f1"] = opt_f1
+    m["optimal_f1_threshold"] = opt_f1_thr
+    m["optimal_f1_precision"] = opt_f1_m.get("precision", 0.0)
+    m["optimal_f1_recall"] = opt_f1_m.get("recall", 0.0)
+
     # Event-based metrics (if any positive labels exist)
     try:
         segs = metrics.segments_from_labels(labels_metric)
@@ -384,18 +423,25 @@ def run_detect(args: argparse.Namespace) -> Dict[str, Any]:
         m_event = None
 
     # Probabilities for calibration metrics/plots
+    # Temporal split: fit calibration on first 60%, evaluate on remaining 40%
+    # to prevent data leakage from test labels into calibration parameters.
+    n_total = len(det["scores"])
+    cal_split = int(n_total * 0.6)
+    cal_scores_fit = det["scores"][:cal_split]
+    cal_labels_fit = data["labels"][:cal_split]
+
     if args.calibrate == "platt":
-        A, B = calibration.fit_platt(det["scores"], data["labels"], lr=args.platt_lr, epochs=args.platt_epochs, l2=args.platt_l2)
+        A, B = calibration.fit_platt(cal_scores_fit, cal_labels_fit, lr=args.platt_lr, epochs=args.platt_epochs, l2=args.platt_l2)
         probs = calibration.apply_platt(det["scores"], A, B)
-        cal_meta = {"method": "platt", "A": A, "B": B}
+        cal_meta = {"method": "platt", "A": A, "B": B, "cal_split": cal_split}
     elif args.calibrate == "temperature":
-        mu, std, T = calibration.fit_temperature(det["scores"], data["labels"])  # defaults are reasonable
+        mu, std, T = calibration.fit_temperature(cal_scores_fit, cal_labels_fit)
         probs = calibration.apply_temperature(det["scores"], mu, std, T)
-        cal_meta = {"method": "temperature", "mu": mu, "std": std, "T": T}
+        cal_meta = {"method": "temperature", "mu": mu, "std": std, "T": T, "cal_split": cal_split}
     elif args.calibrate == "isotonic":
-        model = calibration.fit_isotonic(det["scores"], data["labels"])
+        model = calibration.fit_isotonic(cal_scores_fit, cal_labels_fit)
         probs = calibration.apply_isotonic(det["scores"], model)
-        cal_meta = {"method": "isotonic", "num_steps": len(model)}
+        cal_meta = {"method": "isotonic", "num_steps": len(model), "cal_split": cal_split}
     else:
         probs = calibration.normalize_scores(det["scores"])  # heuristic baseline
         cal_meta = {"method": "normalize_minmax"}
@@ -545,11 +591,33 @@ def run_detect(args: argparse.Namespace) -> Dict[str, Any]:
             cal = result.get("calibration", {})
             dec = result.get("decision", {})
 
+            # Compute SNR from data
+            try:
+                computed_snr = cost_threshold.estimate_snr(data["series"], labels_metric)
+            except Exception:
+                computed_snr = 0.0
+
+            # Classify anomaly types from detected segments
+            anomaly_types = []
+            try:
+                det_segs = metrics.segments_from_labels(det["preds"])
+                if det_segs:
+                    avg_len = sum(e - s + 1 for s, e in det_segs) / len(det_segs)
+                    if avg_len <= 5:
+                        anomaly_types.append("spike anomaly")
+                    elif avg_len > 20:
+                        anomaly_types.append("drift anomaly")
+                    else:
+                        anomaly_types.append("mixed anomaly")
+            except Exception:
+                pass
+
             context = {
                 "dataset": args.dataset,
                 "detector": args.detector,
                 "imbalance": data.get("info", {}).get("anomaly_rate", 0.0),
-                "snr": 0.0,  # TODO: Compute SNR from data
+                "snr": computed_snr,
+                "anomaly_types": anomaly_types,
                 "auc_pr": m.get("auc_pr", 0.0),
                 "f1": m.get("f1", 0.0),
                 "ece": cal.get("ece", 0.0) if cal else 0.0,
@@ -626,12 +694,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--dataset",
         default="synthetic",
-        choices=["synthetic", "SKAB", "SMD", "AIHub71802"],
+        choices=["synthetic", "SKAB", "SMD", "AIHub71802", "SWaT"],
         help="Dataset name",
     )
     p.add_argument("--config", type=str, default="", help="YAML config path to override defaults (CLI wins if set)")
     p.add_argument("--mode", default="detect", choices=["detect"], help="Execution mode")
-    p.add_argument("--detector", choices=["rule", "ml", "hybrid", "speccnn"], default="rule", help="Detector type")
+    p.add_argument("--detector", choices=["rule", "ml", "hybrid", "speccnn", "anomaly_transformer"], default="rule", help="Detector type")
 
     # Synthetic data params
     p.add_argument("--length", type=int, default=2000)
@@ -695,14 +763,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lstm-batch-size", type=int, default=32, help="Batch size for LSTM Autoencoder")
     p.add_argument("--lstm-quantile", type=float, default=0.95, help="Quantile threshold for LSTM Autoencoder")
 
+    # GPU / device params
+    p.add_argument("--device", type=str, default="auto", help="Device for PyTorch models: 'auto', 'cuda:0', 'cuda:1', 'cpu'")
+
     # Hybrid detector params
     p.add_argument("--hybrid-alpha", type=float, default=0.5, help="Weight for ML score (0..1)")
     p.add_argument("--hybrid-quantile", type=float, default=0.99, help="Quantile threshold for hybrid scores")
+    p.add_argument("--ensemble-method", choices=["linear", "product", "max", "learned"], default="linear", help="Ensemble combination method for hybrid detector")
+    p.add_argument("--ml-backend", choices=["knn", "isolation_forest", "lstm_ae"], default="knn", help="ML backend for hybrid detector")
 
     # SpecCNN-lite params
     p.add_argument("--sc-window", type=int, default=128, help="SpecCNN-lite window size")
     p.add_argument("--sc-hop", type=int, default=16, help="SpecCNN-lite hop size")
     p.add_argument("--sc-quantile", type=float, default=0.99, help="Quantile threshold for SpecCNN-lite scores")
+    p.add_argument("--sc-w-low", type=float, default=0.3, help="SpecCNN weight for low band")
+    p.add_argument("--sc-w-mid", type=float, default=0.4, help="SpecCNN weight for mid band")
+    p.add_argument("--sc-w-high", type=float, default=0.3, help="SpecCNN weight for high band")
 
     # Explanation (Phase 2 - RAG-Bayes prototype)
     p.add_argument("--explain", action="store_true", help="Generate LLM-guided explanation for results (Phase 2 prototype)")

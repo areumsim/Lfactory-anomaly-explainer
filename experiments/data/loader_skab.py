@@ -5,12 +5,15 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 
-def _find_skab_files(root: str) -> List[str]:
+def _find_skab_files(root: str, include_anomaly_free: bool = True) -> List[str]:
     base = os.path.join(root, "SKAB")
     if not os.path.isdir(base):
         raise FileNotFoundError(f"SKAB directory not found under {root}")
+    subdirs = ["valve1", "valve2", "other"]
+    if include_anomaly_free:
+        subdirs.append("anomaly-free")
     files: List[str] = []
-    for sub in ("valve1", "valve2", "other", "anomaly-free"):
+    for sub in subdirs:
         p = os.path.join(base, sub)
         if os.path.isdir(p):
             for fn in sorted(os.listdir(p)):
@@ -115,6 +118,42 @@ def _read_csv_timeseries(path: str, sample_limit: Optional[int] = None) -> Tuple
     return series, labels, meta
 
 
+def list_all_files(root: str, include_anomaly_free: bool = False) -> List[Dict[str, Any]]:
+    """List SKAB CSV files with metadata (scenario, path, num_points, label_rate).
+
+    By default excludes anomaly-free files (label_rate=0 → AUC-PR undefined).
+
+    Returns a list of dicts, each containing:
+        - path: absolute file path
+        - file: basename
+        - scenario: valve1/valve2/other/anomaly-free
+        - num_points: number of data points
+        - label_rate: fraction of anomaly labels
+    """
+    files = _find_skab_files(root, include_anomaly_free=include_anomaly_free)
+    result: List[Dict[str, Any]] = []
+    for fpath in files:
+        try:
+            series, labels, meta = _read_csv_timeseries(fpath, sample_limit=None)
+            result.append({
+                "path": fpath,
+                "file": os.path.basename(fpath),
+                "scenario": _infer_scenario(fpath),
+                "num_points": len(series),
+                "label_rate": sum(labels) / len(labels) if labels else 0.0,
+            })
+        except Exception as e:
+            result.append({
+                "path": fpath,
+                "file": os.path.basename(fpath),
+                "scenario": _infer_scenario(fpath),
+                "num_points": 0,
+                "label_rate": 0.0,
+                "error": str(e),
+            })
+    return result
+
+
 def load_one_timeseries(
     root: str,
     split: str = "test",
@@ -123,7 +162,8 @@ def load_one_timeseries(
     min_length: int = 0,
 ) -> Dict[str, Any]:
     # SKAB has scenario folders; no strict split; use whatever exists.
-    files = _find_skab_files(root)
+    # Exclude anomaly-free files for experiments (label_rate=0 → metrics undefined)
+    files = _find_skab_files(root, include_anomaly_free=False)
     candidates: List[str] = []
     if min_length > 0:
         for p in files:
@@ -137,5 +177,6 @@ def load_one_timeseries(
     idx = max(0, int(file_index)) if (file_index is not None and 0 <= int(file_index) < len(candidates)) else 0
     path = candidates[idx]
     series, labels, meta = _read_csv_timeseries(path, sample_limit=sample_limit)
-    print(f"[SKAB] Loaded {meta['num_points']} points from {meta['file']} (label_rate={meta['label_rate']:.3f})")
+    import sys as _sys
+    print(f"[SKAB] Loaded {meta['num_points']} points from {meta['file']} (label_rate={meta['label_rate']:.3f})", file=_sys.stderr)
     return {"series": series, "labels": labels, "meta": meta}

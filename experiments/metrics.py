@@ -51,6 +51,51 @@ def binary_metrics(y_true: Iterable[int], y_pred: Iterable[int]) -> Dict[str, fl
     }
 
 
+def find_optimal_f1_threshold(y_true, scores):
+    """Sweep thresholds to find the one that maximizes F1.
+    Returns: (best_threshold, best_f1, best_metrics_dict)
+
+    Optimized: sorts once, then sweeps thresholds via cumulative TP/FP counts
+    instead of recomputing binary_metrics from scratch for each threshold.
+    """
+    sc = [float(s) for s in scores]
+    yt = [int(v) for v in y_true]
+    n = len(sc)
+    if not sc or sum(yt) == 0:
+        return 0.0, 0.0, binary_metrics(yt, [0] * n)
+
+    total_pos = sum(yt)
+    total_neg = n - total_pos
+
+    # Sort by score descending — sweep from highest threshold to lowest
+    pairs = sorted(zip(sc, yt), key=lambda x: -x[0])
+
+    best_thr, best_f1 = 0.0, -1.0
+    tp, fp = 0, 0
+
+    prev_score = None
+    for i, (s, y) in enumerate(pairs):
+        if y == 1:
+            tp += 1
+        else:
+            fp += 1
+        # Only evaluate at score boundaries (when next score differs)
+        if i + 1 < n and pairs[i + 1][0] == s:
+            continue
+        # F1 = 2*tp / (2*tp + fp + fn), where fn = total_pos - tp
+        fn = total_pos - tp
+        denom = 2 * tp + fp + fn
+        f1 = (2 * tp / denom) if denom > 0 else 0.0
+        if f1 > best_f1:
+            best_f1 = f1
+            best_thr = s
+
+    # Compute full metrics at best threshold
+    preds = [1 if s >= best_thr else 0 for s in sc]
+    best_m = binary_metrics(yt, preds)
+    return best_thr, best_f1, best_m
+
+
 # --- Event-based utilities (Point-adjust, Delay/Lead Time) ---
 def segments_from_labels(labels: Iterable[int]) -> list[tuple[int, int]]:
     """Extract contiguous positive segments (start,end inclusive) from 0/1 labels.

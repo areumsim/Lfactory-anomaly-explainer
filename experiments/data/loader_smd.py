@@ -4,11 +4,61 @@ import os
 from typing import Any, Dict, List, Optional
 
 
+# SMD (Server Machine Dataset) sensor names by index (0-37).
+# Based on Su et al., 2019 — 38 server monitoring metrics.
+# Exact metric names are not published; we use descriptive names
+# following the convention: {category}_{index}.
+SMD_SENSOR_NAMES: List[str] = [
+    "cpu_r",          # 0: CPU rate
+    "load_1",         # 1: load average 1min
+    "load_5",         # 2: load average 5min
+    "load_15",        # 3: load average 15min
+    "mem_shmem",      # 4: shared memory
+    "mem_u",          # 5: memory utilization
+    "mem_u_max",      # 6: memory utilization max
+    "swap_u",         # 7: swap utilization
+    "in_bps",         # 8: network in bytes/s
+    "in_err",         # 9: network in errors
+    "in_pps",         # 10: network in packets/s
+    "net_u_in",       # 11: network utilization in
+    "net_u_out",      # 12: network utilization out
+    "out_bps",        # 13: network out bytes/s
+    "out_err",        # 14: network out errors
+    "out_pps",        # 15: network out packets/s
+    "tcp_tw",         # 16: TCP time-wait
+    "tcp_use",        # 17: TCP connections in use
+    "active_opens",   # 18: TCP active opens
+    "curr_estab",     # 19: TCP currently established
+    "in_errs_tcp",    # 20: TCP in errors
+    "in_segs",        # 21: TCP in segments
+    "listen_ovfl",    # 22: TCP listen overflows
+    "out_segs",       # 23: TCP out segments
+    "retrans_segs",   # 24: TCP retransmitted segments
+    "io_read_bps",    # 25: disk I/O read bytes/s
+    "io_read_sps",    # 26: disk I/O read ops/s
+    "io_write_bps",   # 27: disk I/O write bytes/s
+    "io_write_sps",   # 28: disk I/O write ops/s
+    "disk_u_max",     # 29: disk utilization max
+    "req_ql",         # 30: request queue length
+    "pg_in",          # 31: page in
+    "pg_out",         # 32: page out
+    "pg_faults",      # 33: page faults
+    "kb_a",           # 34: kB available
+    "kb_c",           # 35: kB cached
+    "kb_f",           # 36: kB free
+    "kb_i",           # 37: kB inactive
+]
+
+
 def _dir(root: str, name: str) -> str:
+    # Try with SMD subdirectory first, then without (for pre-resolved paths)
     p = os.path.join(root, "SMD", name)
-    if not os.path.isdir(p):
-        raise FileNotFoundError(f"SMD directory not found: {p}")
-    return p
+    if os.path.isdir(p):
+        return p
+    p2 = os.path.join(root, name)
+    if os.path.isdir(p2):
+        return p2
+    raise FileNotFoundError(f"SMD directory not found: {p}")
 
 
 def _list_files(d: str, ext: tuple[str, ...]) -> List[str]:
@@ -121,6 +171,23 @@ def load_one_timeseries(
             continue
         series.append(v)
 
+    # Build all_sensors dict: sensor_name -> list of float values
+    ncols = max((len(r) for r in rows), default=0)
+    num_sensors = min(ncols, len(SMD_SENSOR_NAMES))
+    all_sensors: Dict[str, List[float]] = {}
+    if num_sensors > 1:
+        # Initialize lists
+        sensor_names = SMD_SENSOR_NAMES[:num_sensors]
+        for name in sensor_names:
+            all_sensors[name] = []
+        for r in rows:
+            for ci in range(num_sensors):
+                try:
+                    v = float(r[ci]) if ci < len(r) else float("nan")
+                except Exception:
+                    v = float("nan")
+                all_sensors[sensor_names[ci]].append(v)
+
     labels: List[int]
     if split.lower() == "test":
         label_dir = _dir(root, "test_label")
@@ -133,12 +200,17 @@ def load_one_timeseries(
     else:
         labels = [0] * len(series)
 
-    meta = {
+    meta: Dict[str, Any] = {
         "dataset": "SMD",
         "file": os.path.basename(data_path),
         "path": data_path,
         "num_points": len(series),
+        "num_sensors": num_sensors,
+        "sensor_columns": SMD_SENSOR_NAMES[:num_sensors],
         "label_rate": (sum(labels) / len(labels) if labels else 0.0),
     }
-    print(f"[SMD] Loaded {meta['num_points']} points from {meta['file']} (label_rate={meta['label_rate']:.3f})")
+    if all_sensors:
+        meta["all_sensors"] = all_sensors
+    import sys as _sys
+    print(f"[SMD] Loaded {meta['num_points']} points × {num_sensors} sensors from {meta['file']} (label_rate={meta['label_rate']:.3f})", file=_sys.stderr)
     return {"series": series, "labels": labels, "meta": meta}

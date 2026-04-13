@@ -7,6 +7,7 @@ from pathlib import Path
 from . import loader_skab
 from . import loader_smd
 from . import loader_aihub_71802
+from . import loader_swat
 
 
 def _load_yaml_simple(path: str) -> Dict[str, Any]:
@@ -97,6 +98,10 @@ def load_timeseries(
         return loader_aihub_71802.load_one_timeseries(
             root, split=split, label_scheme=label_scheme, sample_limit=sample_limit, file_index=file_index, min_length=min_length
         )
+    if ds == "swat":
+        return loader_swat.load_one_timeseries(
+            root, split=split, sample_limit=sample_limit, file_index=file_index, min_length=min_length
+        )
 
     raise ValueError(f"Unsupported dataset name: {name}")
 
@@ -135,14 +140,16 @@ def load_dataset(
             "value": series,
             "label": labels,
         })
-        print(df.head(5).to_string(index=False))
+        import sys as _sys
+        print(df.head(5).to_string(index=False), file=_sys.stderr)
         vc = df["label"].value_counts().to_dict()
-        print(f"[loader] label counts: {vc}")
+        print(f"[loader] label counts: {vc}", file=_sys.stderr)
         data_obj: Any = df
     except Exception:
         data_obj = {"timestamp": list(range(len(series))), "value": series, "label": labels}
-        print(f"[loader] head: {[(data_obj['timestamp'][i], data_obj['value'][i], data_obj['label'][i]) for i in range(min(5, len(series)))]}")
+        import sys as _sys
+        print(f"[loader] head: {[(data_obj['timestamp'][i], data_obj['value'][i], data_obj['label'][i]) for i in range(min(5, len(series)))]}", file=_sys.stderr)
         c0 = sum(1 for y in labels if y == 0)
         c1 = sum(1 for y in labels if y != 0)
-        print(f"[loader] label counts: {{0: {c0}, 1: {c1}}}")
+        print(f"[loader] label counts: {{0: {c0}, 1: {c1}}}", file=_sys.stderr)
     return {"data": data_obj, "label": labels, "meta": meta}

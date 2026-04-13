@@ -1,0 +1,314 @@
+# SWaT (Secure Water Treatment) Dataset Domain Knowledge
+# iTrust Centre for Research in Cyber Security, SUTD
+# Based on Goh et al. (2016), Mathur & Tippenhauer (2016)
+
+dataset:
+  name: "SWaT"
+  full_name: "Secure Water Treatment Testbed"
+  domain: "Water Treatment Plant (CPS)"
+  description: |
+    SWaT is a fully operational scaled-down water treatment testbed
+    with 6 sub-processes: raw water intake, pre-treatment, ultrafiltration,
+    de-chlorination, reverse osmosis, and backwash cleaning.
+    51 sensors/actuators monitor physical and chemical properties.
+    Attack scenarios target specific sensors/actuators to disrupt treatment.
+  sampling_rate: "1 Hz"
+  num_sensors: 51
+  anomaly_rate: "~12% (attack dataset)"
+
+processes:
+  P1:
+    name: "Raw Water Intake"
+    description: "Stores and supplies raw water to the treatment process"
+    sensors: ["FIT101", "LIT101"]
+    actuators: ["MV101", "P101", "P102"]
+    normal_behavior: "LIT101 oscillates between HH and LL as MV101 opens/closes"
+
+  P2:
+    name: "Pre-treatment (Chemical Dosing)"
+    description: "Adjusts water pH and conductivity via chemical dosing"
+    sensors: ["AIT201", "AIT202", "AIT203", "FIT201"]
+    actuators: ["MV201", "P201", "P202", "P203", "P204", "P205", "P206"]
+    normal_behavior: "AIT201 (pH) maintained near 7.0, AIT202 (ORP) stable"
+
+  P3:
+    name: "Ultrafiltration (UF)"
+    description: "Membrane filtration to remove suspended particles"
+    sensors: ["DPIT301", "FIT301", "LIT301"]
+    actuators: ["MV301", "MV302", "MV303", "MV304", "P301", "P302"]
+    normal_behavior: "DPIT301 indicates membrane pressure drop, LIT301 oscillates"
+
+  P4:
+    name: "De-Chlorination"
+    description: "UV treatment and sodium bisulphite dosing to remove chlorine"
+    sensors: ["AIT401", "AIT402", "FIT401", "LIT401"]
+    actuators: ["P401", "P402", "P403", "P404", "UV401"]
+    normal_behavior: "AIT401 (chlorine) should decrease after UV401 treatment"
+
+  P5:
+    name: "Reverse Osmosis (RO)"
+    description: "Final purification via RO membranes"
+    sensors: ["AIT501", "AIT502", "AIT503", "AIT504", "FIT501", "FIT502", "FIT503", "FIT504"]
+    actuators: ["MV501", "MV502", "MV503", "MV504", "P501", "P502"]
+    normal_behavior: "AIT501-504 monitor RO permeate quality, FIT501-504 monitor flow rates"
+
+  P6:
+    name: "Backwash"
+    description: "Cleaning of UF membranes via reverse flow"
+    sensors: ["FIT601"]
+    actuators: ["P601", "P602"]
+    normal_behavior: "Periodic backwash cycles when DPIT301 exceeds threshold"
+
+sensors:
+  FIT101:
+    type: "flow"
+    unit: "m^3/h"
+    normal_range: [0.5, 3.0]
+    process: "P1"
+    description: "Raw water inflow rate to tank T101"
+    anomaly_indicators:
+      high: "Valve MV101 stuck open, upstream pressure surge"
+      low: "Valve MV101 stuck closed, supply disruption"
+      sudden_change: "Valve manipulation attack, sensor spoofing"
+
+  LIT101:
+    type: "level"
+    unit: "mm"
+    normal_range: [250, 800]
+    process: "P1"
+    description: "Water level in raw water tank T101"
+    anomaly_indicators:
+      high: "Overflow risk, MV101 stuck open"
+      low: "Tank drain, pump P101/P102 running without inflow"
+      sudden_change: "Pump or valve state change attack"
+
+  AIT201:
+    type: "chemical (pH)"
+    unit: "pH"
+    normal_range: [6.5, 8.0]
+    process: "P2"
+    description: "pH level after chemical dosing"
+    anomaly_indicators:
+      high: "Excessive NaOCl dosing (P203)"
+      low: "Excessive HCl dosing (P201)"
+
+  AIT202:
+    type: "chemical (ORP)"
+    unit: "mV"
+    normal_range: [200, 600]
+    process: "P2"
+    description: "Oxidation-Reduction Potential after dosing"
+    anomaly_indicators:
+      high: "Over-oxidation, excess chlorine"
+      low: "Under-oxidation, insufficient disinfection"
+
+  AIT203:
+    type: "chemical (conductivity)"
+    unit: "uS/cm"
+    normal_range: [100, 400]
+    process: "P2"
+    description: "Water conductivity (total dissolved solids proxy)"
+
+  FIT201:
+    type: "flow"
+    unit: "m^3/h"
+    normal_range: [0.5, 3.0]
+    process: "P2"
+    description: "Flow rate through pre-treatment stage"
+
+  DPIT301:
+    type: "pressure (differential)"
+    unit: "kPa"
+    normal_range: [0, 50]
+    process: "P3"
+    description: "Differential pressure across UF membrane (fouling indicator)"
+    anomaly_indicators:
+      high: "Membrane fouling, needs backwash"
+      low: "Membrane breach or sensor failure"
+
+  FIT301:
+    type: "flow"
+    unit: "m^3/h"
+    normal_range: [0.5, 3.0]
+    process: "P3"
+    description: "UF permeate flow rate"
+
+  LIT301:
+    type: "level"
+    unit: "mm"
+    normal_range: [250, 800]
+    process: "P3"
+    description: "Water level in UF feed tank"
+
+  AIT401:
+    type: "chemical (chlorine)"
+    unit: "mg/L"
+    normal_range: [0, 1.5]
+    process: "P4"
+    description: "Free chlorine after UV treatment"
+
+  AIT402:
+    type: "chemical (chlorine)"
+    unit: "mg/L"
+    normal_range: [0, 1.5]
+    process: "P4"
+    description: "Chlorine level after de-chlorination"
+
+  FIT401:
+    type: "flow"
+    unit: "m^3/h"
+    normal_range: [0.5, 3.0]
+    process: "P4"
+    description: "Flow rate through de-chlorination stage"
+
+  LIT401:
+    type: "level"
+    unit: "mm"
+    normal_range: [250, 800]
+    process: "P4"
+    description: "Water level in RO feed tank"
+
+  AIT501:
+    type: "chemical (pH)"
+    unit: "pH"
+    normal_range: [6.5, 8.0]
+    process: "P5"
+    description: "RO feed water pH"
+
+  AIT502:
+    type: "chemical (ORP)"
+    unit: "mV"
+    normal_range: [200, 600]
+    process: "P5"
+    description: "RO feed water ORP"
+
+  AIT503:
+    type: "chemical (conductivity)"
+    unit: "uS/cm"
+    normal_range: [50, 200]
+    process: "P5"
+    description: "RO permeate conductivity (purity indicator)"
+
+  AIT504:
+    type: "chemical (conductivity)"
+    unit: "uS/cm"
+    normal_range: [100, 400]
+    process: "P5"
+    description: "RO reject conductivity"
+
+  FIT501:
+    type: "flow"
+    unit: "m^3/h"
+    normal_range: [0.5, 3.0]
+    process: "P5"
+    description: "RO feed flow rate"
+
+  FIT502:
+    type: "flow"
+    unit: "m^3/h"
+    normal_range: [0.2, 2.0]
+    process: "P5"
+    description: "RO permeate flow rate"
+
+  FIT503:
+    type: "flow"
+    unit: "m^3/h"
+    normal_range: [0.1, 1.0]
+    process: "P5"
+    description: "RO reject flow rate"
+
+  FIT504:
+    type: "flow"
+    unit: "m^3/h"
+    normal_range: [0.5, 3.0]
+    process: "P5"
+    description: "RO recirculation flow rate"
+
+  FIT601:
+    type: "flow"
+    unit: "m^3/h"
+    normal_range: [0, 5.0]
+    process: "P6"
+    description: "Backwash flow rate"
+
+attack_scenarios:
+  # Representative attack scenarios (36 total in dataset)
+  single_point:
+    description: "Attacks targeting a single sensor or actuator"
+    examples:
+      - target: "LIT101"
+        type: "sensor_spoofing"
+        effect: "Tank overflow/underflow by hiding true water level"
+      - target: "MV101"
+        type: "actuator_manipulation"
+        effect: "Valve forced open/closed, disrupting water supply"
+      - target: "P101"
+        type: "actuator_manipulation"
+        effect: "Pump forced on/off, disrupting flow"
+
+  multi_point:
+    description: "Coordinated attacks across multiple components"
+    examples:
+      - targets: ["LIT101", "MV101"]
+        type: "coordinated"
+        effect: "Sensor spoofing + actuator manipulation to mask attack"
+      - targets: ["AIT202", "P203"]
+        type: "coordinated"
+        effect: "Chemical over-dosing while spoofing quality sensor"
+
+correlation_rules:
+  - sensors: ["FIT101", "LIT101"]
+    relation: "FIT101 inflow should correlate with LIT101 level rise"
+    anomaly: "Divergence indicates sensor spoofing or leak"
+
+  - sensors: ["LIT101", "MV101"]
+    relation: "MV101 opens when LIT101 < LL, closes when LIT101 > HH"
+    anomaly: "MV101 state mismatch with LIT101 level indicates attack"
+
+  - sensors: ["AIT201", "P201", "P203"]
+    relation: "P201 (HCl) and P203 (NaOCl) control AIT201 (pH)"
+    anomaly: "pH drift despite pump activity suggests sensor spoofing"
+
+  - sensors: ["DPIT301", "P301", "FIT301"]
+    relation: "DPIT301 rises as membrane fouls; P301 maintains FIT301 flow"
+    anomaly: "DPIT301 drop with stable FIT301 suggests membrane breach"
+
+  - sensors: ["LIT301", "LIT401"]
+    relation: "UF permeate fills T401; LIT301 feeds LIT401"
+    anomaly: "Level divergence between stages indicates flow disruption"
+
+  - sensors: ["AIT501", "AIT503"]
+    relation: "RO permeate (AIT503) should have lower conductivity than feed (AIT501)"
+    anomaly: "AIT503 > AIT501 indicates RO membrane failure"
+
+severity_levels:
+  critical:
+    description: "Immediate safety/quality risk"
+    indicators:
+      - "Tank overflow (LIT > HHH)"
+      - "Chemical over-dosing (pH < 4 or pH > 10)"
+      - "RO membrane breach (AIT503 surge)"
+    response: "Emergency shutdown"
+
+  high:
+    description: "Process disruption within 1 hour"
+    indicators:
+      - "Tank level approaching limits"
+      - "Flow rate deviation > 50%"
+      - "Chemical parameter out of range"
+    response: "Operator alert, investigate within 15 minutes"
+
+  medium:
+    description: "Degraded performance"
+    indicators:
+      - "Membrane differential pressure rising"
+      - "Minor flow rate fluctuations"
+      - "Sensor noise increase"
+    response: "Log and schedule maintenance"
+
+  low:
+    description: "Normal operational variation"
+    indicators:
+      - "Periodic level oscillation (normal control cycle)"
+      - "Backwash cycle activation"
+    response: "No action required"

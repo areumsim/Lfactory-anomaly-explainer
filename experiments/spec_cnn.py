@@ -1,33 +1,55 @@
-"""SpecCNN-lite: 주파수 도메인 기반 이상 점수(의존성 최소화).
+"""SpecCNN-lite: 주파수 도메인 기반 이상 점수.
 
 설계:
-- 고정길이 윈도우(예: 128)로 구간을 나누고, 각 구간의 정규화된 스펙트럼 에너지를 계산.
+- 고정길이 윈도우(예: 128)로 구간을 나누고, 각 구간의 스펙트럼 밴드 에너지를 계산.
 - 저/중/고 3개 대역 에너지를 특징으로 사용.
-- 간단한 1D '필터'(가중합)를 적용하여 점수화. (학습 대신 휴리스틱 가중치)
+- **Spectral Flux** 방식: 연속 프레임 간 밴드 에너지 변화량(half-wave rectified)을
+  이상 점수로 사용. 정상 구간은 스펙트럼이 안정적이므로 flux ≈ 0, 이상 구간은 급격한
+  주파수 변화로 flux가 커짐.
 - 구간 점수를 원본 길이로 확장(윈도우 중심에 할당, 선형 보간)하여 포인트별 스코어 생성.
 
-의존성: math, cmath만 사용 (numpy 미사용)
+의존성: numpy (FFT 가속)
 """
 from __future__ import annotations
 
 from typing import List, Dict
 import math
-import cmath
+
+try:
+    import numpy as np
+    _HAS_NUMPY = True
+except ImportError:
+    _HAS_NUMPY = False
 
 
 def _hann(n: int) -> List[float]:
     return [0.5 - 0.5 * math.cos(2 * math.pi * i / max(1, n - 1)) for i in range(n)]
 
 
-def _dft_mag(x: List[float]) -> List[float]:
+def _dft_mag_numpy(x: List[float]) -> List[float]:
+    """FFT magnitude using numpy (O(N log N))."""
+    arr = np.array(x, dtype=np.float64)
+    mag = np.abs(np.fft.rfft(arr))
+    return mag.tolist()
+
+
+def _dft_mag_pure(x: List[float]) -> List[float]:
+    """Pure-Python DFT magnitude (O(N^2) fallback)."""
+    import cmath
     N = len(x)
     mags: List[float] = []
-    for k in range(N // 2 + 1):  # real-valued symmetry
+    for k in range(N // 2 + 1):
         s = 0j
-        for n, xn in enumerate(x):
-            s += complex(xn, 0.0) * cmath.exp(-2j * math.pi * k * n / N)
+        for n_idx, xn in enumerate(x):
+            s += complex(xn, 0.0) * cmath.exp(-2j * math.pi * k * n_idx / N)
         mags.append(abs(s))
     return mags
+
+
+def _dft_mag(x: List[float]) -> List[float]:
+    if _HAS_NUMPY:
+        return _dft_mag_numpy(x)
+    return _dft_mag_pure(x)
 
 
 def _band_energy(mag: List[float], lo: float, hi: float) -> float:
@@ -40,29 +62,49 @@ def _band_energy(mag: List[float], lo: float, hi: float) -> float:
     return s / max(1, (ihi - ilo + 1))
 
 
-def _window_scores(series: List[float], window: int, hop: int) -> List[float]:
+def _window_scores(
+    series: List[float],
+    window: int,
+    hop: int,
+    w_low: float = 0.3,
+    w_mid: float = 0.4,
+    w_high: float = 0.3,
+) -> List[float]:
+    """Compute per-window anomaly scores using spectral flux.
+
+    Spectral flux measures the frame-to-frame change in band energies.
+    Half-wave rectification keeps only energy increases (onset detection).
+    """
     n = len(series)
     if n == 0:
         return []
     w = max(8, int(window))
     h = max(1, int(hop))
     win = _hann(w)
-    scores: List[float] = []
-    # heuristic filter weights: emphasize mid/high band rise and low band drop
-    w_low, w_mid, w_high = -0.2, 0.6, 0.6
+
+    # Phase 1: compute raw band energies for all windows
+    raw_features: List[List[float]] = []  # each entry: [e_low, e_mid, e_high]
     for start in range(0, n - w + 1, h):
         frame = [series[start + i] * win[i] for i in range(w)]
         mag = _dft_mag(frame)
-        # normalize magnitude by frame energy to reduce amplitude effect
-        energy = sum(v * v for v in frame) / w
-        scale = 1.0 / max(1e-8, energy)
-        magn = [m * scale for m in mag]
-        # three bands: [0,0.1], (0.1,0.3], (0.3,0.5]
-        e_low = _band_energy(magn, 0.0, 0.1)
-        e_mid = _band_energy(magn, 0.1, 0.3)
-        e_high = _band_energy(magn, 0.3, 0.5)
-        s = w_low * e_low + w_mid * e_mid + w_high * e_high
-        scores.append(max(0.0, s))
+        e_low = _band_energy(mag, 0.0, 0.1)
+        e_mid = _band_energy(mag, 0.1, 0.3)
+        e_high = _band_energy(mag, 0.3, 0.5)
+        raw_features.append([e_low, e_mid, e_high])
+
+    if len(raw_features) < 2:
+        return [0.0] * max(1, len(raw_features))
+
+    # Phase 2: Spectral Flux — half-wave rectified band energy difference
+    weights = [w_low, w_mid, w_high]
+    scores: List[float] = [0.0]  # first window has no predecessor
+    for i in range(1, len(raw_features)):
+        flux = 0.0
+        for b in range(3):
+            diff = raw_features[i][b] - raw_features[i - 1][b]
+            flux += weights[b] * max(0.0, diff)  # half-wave rectification
+        scores.append(flux)
+
     return scores
 
 
@@ -95,11 +137,31 @@ def _upsample_to_points(win_scores: List[float], n: int, hop: int, window: int) 
     return out
 
 
-def detect_speccnn(series: List[float], window: int = 128, hop: int = 16, quantile: float = 0.99) -> Dict:
-    ws = _window_scores(series, window=window, hop=hop)
-    scores = _upsample_to_points(ws, n=len(series), hop=hop, window=window)
-    # quantile threshold
-    # reuse ml_detector_knn._quantile to avoid re-implementing
+def _minmax_normalize(scores: List[float]) -> List[float]:
+    """Normalize scores to [0, 1] range for consistency with other detectors."""
+    if not scores:
+        return scores
+    lo = min(scores)
+    hi = max(scores)
+    rng = hi - lo
+    if rng < 1e-12:
+        return [0.0] * len(scores)
+    return [(s - lo) / rng for s in scores]
+
+
+def detect_speccnn(
+    series: List[float],
+    window: int = 128,
+    hop: int = 16,
+    quantile: float = 0.99,
+    w_low: float = 0.3,
+    w_mid: float = 0.4,
+    w_high: float = 0.3,
+) -> Dict:
+    ws = _window_scores(series, window=window, hop=hop, w_low=w_low, w_mid=w_mid, w_high=w_high)
+    raw_scores = _upsample_to_points(ws, n=len(series), hop=hop, window=window)
+    scores = _minmax_normalize(raw_scores)
+    # quantile threshold on normalized [0,1] scores
     from .ml_detector_knn import _quantile
 
     thr = _quantile(scores, quantile)
@@ -112,6 +174,8 @@ def detect_speccnn(series: List[float], window: int = 128, hop: int = 16, quanti
             "window": int(window),
             "hop": int(hop),
             "quantile": float(quantile),
+            "w_low": float(w_low),
+            "w_mid": float(w_mid),
+            "w_high": float(w_high),
         },
     }
-

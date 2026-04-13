@@ -148,11 +148,17 @@ class LLMProvider:
             raise ValueError(f"Unknown provider type: {self.provider_type}")
 
     def _init_openai(self):
-        """Initialize OpenAI client."""
-        openai.api_key = self.config["api_key"]
-        if self.config.get("organization"):
-            openai.organization = self.config["organization"]
-        return openai
+        """Initialize OpenAI client using modern client pattern."""
+        api_key = self.config["api_key"]
+        # Resolve environment variable references
+        if isinstance(api_key, str) and api_key.startswith("${") and api_key.endswith("}"):
+            env_var = api_key[2:-1]
+            api_key = os.environ.get(env_var, "")
+        org = self.config.get("organization")
+        if isinstance(org, str) and org.startswith("${") and org.endswith("}"):
+            org = os.environ.get(org[2:-1])
+        client = openai.OpenAI(api_key=api_key, organization=org)
+        return client
 
     def _init_local(self) -> Tuple[Any, Any]:
         """Initialize local transformers model."""
@@ -183,9 +189,9 @@ class LLMProvider:
             return ""
 
     def _generate_openai(self, prompt: str) -> str:
-        """Generate using OpenAI API."""
+        """Generate using OpenAI API (modern client pattern)."""
         try:
-            response = self.client.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model=self.config["model"],
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=self.config.get("max_tokens", 512),
@@ -216,6 +222,66 @@ class LLMProvider:
         except Exception as e:
             warnings.warn(f"Local LLM generation failed: {e}")
             return "[LLM generation failed]"
+
+
+def _safe_eval_condition(condition: str, **variables) -> bool:
+    """Safely evaluate a simple condition string without using eval().
+
+    Supports patterns:
+        - "var > value", "var < value", "var >= value", "var <= value", "var == value"
+        - "substring detected" (checks if substring is in anomaly_types list)
+    """
+    condition = condition.strip()
+
+    # Pattern: "something detected" -> check in anomaly_types
+    m = re.match(r'^["\']?(.+?)\s+(detected|in\s+anomaly_types)["\']?$', condition, re.IGNORECASE)
+    if m:
+        keyword = m.group(1).strip().strip("'\"")
+        anomaly_types = variables.get("anomaly_types", [])
+        return any(keyword.lower() in str(at).lower() for at in anomaly_types)
+
+    # Pattern: "var op value"
+    m = re.match(r'^(\w+)\s*(>=|<=|>|<|==|!=)\s*(.+)$', condition)
+    if m:
+        var_name = m.group(1).strip()
+        op = m.group(2).strip()
+        val_str = m.group(3).strip().strip("'\"")
+
+        # Case-insensitive variable lookup
+        var_name_lower = var_name.lower()
+        matched_key = None
+        for k in variables:
+            if k.lower() == var_name_lower:
+                matched_key = k
+                break
+        if matched_key is None:
+            return False
+
+        var_val = variables[matched_key]
+        try:
+            cmp_val = float(val_str)
+        except ValueError:
+            return False
+
+        try:
+            var_float = float(var_val)
+        except (ValueError, TypeError):
+            return False
+
+        if op == ">":
+            return var_float > cmp_val
+        elif op == "<":
+            return var_float < cmp_val
+        elif op == ">=":
+            return var_float >= cmp_val
+        elif op == "<=":
+            return var_float <= cmp_val
+        elif op == "==":
+            return var_float == cmp_val
+        elif op == "!=":
+            return var_float != cmp_val
+
+    return False
 
 
 class RAGExplainer:
@@ -281,9 +347,8 @@ class RAGExplainer:
 
         for rule in self.config.get("bayes_rules", []):
             condition = rule["condition"]
-            # Simple eval (unsafe in production, OK for prototype)
             try:
-                if eval(condition, {"imbalance": imbalance, "snr": snr, "anomaly_types": anomaly_types}):
+                if _safe_eval_condition(condition, imbalance=imbalance, snr=snr, anomaly_types=anomaly_types):
                     recommendations.append({
                         "adjustment": rule["adjustment"],
                         "reason": rule["reason"],

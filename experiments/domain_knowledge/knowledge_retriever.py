@@ -17,32 +17,53 @@ class DomainKnowledgeRetriever:
     Supports SKAB (industrial valve monitoring) and SMD (server monitoring).
     """
 
-    def __init__(self, knowledge_dir: Optional[str] = None):
+    def __init__(self, knowledge_dir: Optional[str] = None, use_nosensor: bool = False):
         """
         Initialize the knowledge retriever.
 
         Args:
             knowledge_dir: Directory containing knowledge YAML files.
                           Defaults to same directory as this module.
+            use_nosensor: If True, prefer *_knowledge_nosensor.yaml files
+                         (anonymized sensor names) for confound-controlled experiments.
         """
         if knowledge_dir is None:
             knowledge_dir = os.path.dirname(os.path.abspath(__file__))
 
         self.knowledge_dir = Path(knowledge_dir)
         self.knowledge_cache: Dict[str, Dict] = {}
+        self.use_nosensor = use_nosensor
 
         # Load available knowledge bases
         self._load_knowledge_bases()
 
     def _load_knowledge_bases(self):
-        """Load all YAML knowledge files."""
+        """Load all YAML knowledge files.
+
+        If use_nosensor is True, prefer *_knowledge_nosensor.yaml over
+        *_knowledge.yaml for datasets where the nosensor variant exists.
+        """
+        # First load all standard knowledge files
         for yaml_file in self.knowledge_dir.glob("*_knowledge.yaml"):
+            # Skip nosensor variants in the initial pass
+            if "_nosensor" in yaml_file.stem:
+                continue
             dataset_name = yaml_file.stem.replace("_knowledge", "").upper()
             try:
                 with open(yaml_file, 'r', encoding='utf-8') as f:
                     self.knowledge_cache[dataset_name] = yaml.safe_load(f)
             except Exception as e:
                 print(f"Warning: Could not load {yaml_file}: {e}")
+
+        # If use_nosensor, override with nosensor variants where available
+        if self.use_nosensor:
+            for yaml_file in self.knowledge_dir.glob("*_knowledge_nosensor.yaml"):
+                dataset_name = yaml_file.stem.replace("_knowledge_nosensor", "").upper()
+                try:
+                    with open(yaml_file, 'r', encoding='utf-8') as f:
+                        self.knowledge_cache[dataset_name] = yaml.safe_load(f)
+                except Exception as e:
+                    print(f"Warning: Could not load {yaml_file}: {e}")
 
     def get_dataset_context(self, dataset: str) -> str:
         """

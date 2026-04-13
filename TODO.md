@@ -114,7 +114,7 @@ This plan prioritizes **theoretical validity**, **rigorous experiments**, and **
     - **Non-trivial**: Answer depends on anomaly type, SNR, sampling rate
 
   - **RQ2** (Hybrid method): "Which ensemble method (linear, product, max, learned) achieves best calibration-cost trade-off?"
-    - **Hypotheses**: H2.1 (Linear ECE<0.05), H2.2 (Max best cost on high imbalance), H2.3 (Learned ≥5% AUC-PR gain)
+    - **Hypotheses**: H2.1 (Linear ECE<0.05 → ⚠️ 기각: leakage 수정 후 ECE≈0.19), H2.2 (Max best cost on high imbalance), H2.3 (Learned ≥5% AUC-PR gain)
     - **Acceptance**: 4 methods on ≥3 datasets, Pareto frontier plot, paired t-test, documented in ABLATION_ENSEMBLE_METHODS.md
     - **Non-trivial**: Linear is simplest but not necessarily optimal
 
@@ -124,7 +124,7 @@ This plan prioritizes **theoretical validity**, **rigorous experiments**, and **
     - **Non-trivial**: Point F1 favors precision, Event F1 favors recall - trade-off expected
 
   - **RQ4** (Cost sensitivity): "How should the FN/FP cost ratio vary with dataset imbalance and SNR?"
-    - **Hypotheses**: H4.1 (cost_ratio ≈ 0.5×imbalance), H4.2 (saturation at ~20 for >1:100), H4.3 (ratio↓ as SNR↓), H4.4 (ECE<0.05 → stronger correlation)
+    - **Hypotheses**: H4.1 (cost_ratio ≈ 0.5×imbalance), H4.2 (saturation at ~20 for >1:100), H4.3 (ratio↓ as SNR↓), H4.4 (ECE<0.05 → stronger correlation → ⚠️ 전제 붕괴)
     - **Acceptance**: Grid search heatmap, SNR calculation, fitted model (R²>0.7), practitioner guideline table, documented in COST_SENSITIVITY_ANALYSIS.md
     - **Non-trivial**: Practical guidance for different scenarios
 

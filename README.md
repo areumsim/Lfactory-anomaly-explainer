@@ -408,7 +408,7 @@ python scripts/ci_bootstrap.py --preds runs/tmp_preds.csv --n 1000 --out runs/ci
 
 ## 2) 실험 목표(Objectives)
 - Hybrid(ML+Rule) 성능 검증: AUC-PR/ROC 및 비용 최적화(Expected Cost) 비교
-- Calibration(Platt/Isotonic) 적용으로 ECE ≤ 0.05 달성
+- Calibration(Platt/Isotonic) 적용 및 temporal split ECE 평가 (수정 후 ECE ≈ 0.19)
 - 재현성: seed 고정, run_id/git_sha/start_ts 자동 기록
 
 ## 3) 데이터셋(Datasets)
