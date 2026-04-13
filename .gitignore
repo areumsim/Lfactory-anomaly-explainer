@@ -13,8 +13,9 @@ runs_archive/
 reports/batch/
 parquet/
 
-# Large raw datasets (not for git)
-data_SWaT/
+# Large raw datasets — keep folder shell, ignore contents
+data_SWaT/*
+!data_SWaT/.gitkeep
 
 # Generated plots/data under runs
 runs/**/*.png
